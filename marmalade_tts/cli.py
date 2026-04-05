@@ -79,31 +79,65 @@ def cmd_config(args: list):
 
 def cmd_daemon(args: list):
     """Handle `marmalade-tts daemon ...`."""
-    if not args or args[0] == "status":
-        st = daemon.status()
-        if st["running"]:
-            print(f"[daemon] kitten running (pid {st['pid']})")
-            print(f"  socket: {st['socket']}")
+    # Parse optional --engine flag
+    engine = None
+    filtered = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--engine" and i + 1 < len(args):
+            engine = args[i + 1]
+            i += 2
         else:
-            print("[daemon] kitten not running")
+            filtered.append(args[i])
+            i += 1
+    args = filtered
+
+    if not args or args[0] == "status":
+        statuses = daemon.status(engine)  # None = all engines
+        for eng, st in statuses.items():
+            if st["running"]:
+                print(f"[daemon] {eng} running (pid {st['pid']})")
+                print(f"  socket: {st['socket']}")
+            else:
+                print(f"[daemon] {eng} not running")
         return
 
     if args[0] == "start":
-        print("[daemon] Starting kitten daemon...")
-        ok = daemon.start(timeout=20.0)
-        if ok:
-            print("[daemon] kitten ready")
-        else:
-            print("[daemon] Failed to start kitten daemon", file=sys.stderr)
-            sys.exit(1)
+        engines_to_start = [engine] if engine else ["kitten"]  # default to kitten
+        for eng in engines_to_start:
+            print(f"[daemon] Starting {eng} daemon...")
+            ok = daemon.start(eng, timeout=30.0)
+            if ok:
+                print(f"[daemon] {eng} ready")
+            else:
+                print(f"[daemon] Failed to start {eng} daemon", file=sys.stderr)
+                sys.exit(1)
         return
 
     if args[0] == "stop":
-        daemon.stop()
-        print("[daemon] kitten stopped")
+        engines_to_stop = [engine] if engine else list(daemon.ENGINE_DAEMONS.keys())
+        for eng in engines_to_stop:
+            if daemon.is_running(eng):
+                daemon.stop(eng)
+                print(f"[daemon] {eng} stopped")
         return
 
-    print("[daemon] Usage: daemon start | daemon stop | daemon status", file=sys.stderr)
+    if args[0] == "start-all":
+        for eng in daemon.ENGINE_DAEMONS:
+            print(f"[daemon] Starting {eng}...")
+            ok = daemon.start(eng, timeout=30.0)
+            print(f"[daemon] {eng} {'ready' if ok else 'FAILED'}")
+        return
+
+    if args[0] == "stop-all":
+        for eng in daemon.ENGINE_DAEMONS:
+            if daemon.is_running(eng):
+                daemon.stop(eng)
+                print(f"[daemon] {eng} stopped")
+        return
+
+    print("[daemon] Usage: daemon [status|start|stop|start-all|stop-all] [--engine ENGINE]",
+          file=sys.stderr)
     sys.exit(1)
 
 

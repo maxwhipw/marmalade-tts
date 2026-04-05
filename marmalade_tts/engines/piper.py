@@ -1,10 +1,11 @@
-"""Piper TTS engine — subprocess, ONNX, always CPU."""
+"""Piper TTS engine — daemon client with subprocess fallback."""
 
 import os
 import subprocess
 import sys
 
 from . import Engine
+from .. import daemon as dmgr
 
 PIPER_VOICES_DIR = os.path.expanduser("~/.local/share/piper/voices")
 
@@ -15,9 +16,9 @@ class PiperEngine(Engine):
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.model = cfg.get("model")
+        self.use_daemon = cfg.get("daemon", False)
 
     def _find_model(self) -> str:
-        """Resolve model path: explicit config, or scan voices dir."""
         if self.model:
             return os.path.expanduser(self.model)
         if os.path.isdir(PIPER_VOICES_DIR):
@@ -29,6 +30,14 @@ class PiperEngine(Engine):
 
     def synthesize(self, text: str, out_path: str, speed: float = 1.0,
                    speaker: str = None, model: str = None, **kwargs):
+        if self.use_daemon:
+            request = {"text": text, "speed": speed, "out": out_path}
+            if speaker is not None:
+                request["speaker"] = speaker
+            dmgr.synthesize("piper", request, auto_start=True)
+            return
+
+        # Subprocess fallback
         m = model or self._find_model()
         if not m:
             sys.exit(

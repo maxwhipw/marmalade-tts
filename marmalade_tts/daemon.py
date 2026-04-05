@@ -1,92 +1,108 @@
-"""Kitten daemon management (start/stop/status) and client."""
+"""Daemon management for all engines — start/stop/status via systemd + socket client."""
 
 import json
 import os
-import signal
 import socket
 import subprocess
 import sys
 import time
 
-BASE_DIR    = os.path.expanduser("~/.local/share/marmalade-tts")
-SOCKET_PATH = os.path.join(BASE_DIR, "kitten.sock")
-PID_PATH    = os.path.join(BASE_DIR, "kitten.pid")
-SERVICE     = "marmalade-kitten.service"
+BASE_DIR = os.path.expanduser("~/.local/share/marmalade-tts")
+
+# Engine → (socket filename, pid filename, systemd service name)
+ENGINE_DAEMONS = {
+    "kitten": ("kitten.sock", "kitten.pid", "marmalade-kitten.service"),
+    "kokoro": ("kokoro.sock", "kokoro.pid", "marmalade-kokoro.service"),
+    "piper":  ("piper.sock",  "piper.pid",  "marmalade-piper.service"),
+    "coqui":  ("coqui.sock",  "coqui.pid",  "marmalade-coqui.service"),
+}
 
 
-def is_running() -> bool:
-    """Check if kitten daemon is alive."""
-    if not os.path.exists(PID_PATH):
+def _paths(engine: str):
+    """Return (socket_path, pid_path, service_name) for an engine."""
+    sock_f, pid_f, svc = ENGINE_DAEMONS[engine]
+    return os.path.join(BASE_DIR, sock_f), os.path.join(BASE_DIR, pid_f), svc
+
+
+def is_running(engine: str) -> bool:
+    """Check if a daemon is alive."""
+    _, pid_path, _ = _paths(engine)
+    if not os.path.exists(pid_path):
         return False
     try:
-        pid = int(open(PID_PATH).read().strip())
-        os.kill(pid, 0)  # signal 0 = check existence
+        pid = int(open(pid_path).read().strip())
+        os.kill(pid, 0)
         return True
     except (ValueError, OSError):
         return False
 
 
-def start(timeout: float = 15.0) -> bool:
-    """Start the kitten daemon via systemd. Returns True if ready."""
-    if is_running() and os.path.exists(SOCKET_PATH):
+def start(engine: str, timeout: float = 30.0) -> bool:
+    """Start a daemon via systemd. Returns True if ready."""
+    sock_path, _, svc = _paths(engine)
+    if is_running(engine) and os.path.exists(sock_path):
         return True
-    subprocess.run(["systemctl", "--user", "start", SERVICE], check=False)
+    subprocess.run(["systemctl", "--user", "start", svc], check=False)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if os.path.exists(SOCKET_PATH) and is_running():
+        if os.path.exists(sock_path) and is_running(engine):
             return True
         time.sleep(0.5)
     return False
 
 
-def stop():
-    """Stop the kitten daemon via systemd."""
-    subprocess.run(["systemctl", "--user", "stop", SERVICE], check=False)
+def stop(engine: str):
+    """Stop a daemon via systemd."""
+    _, _, svc = _paths(engine)
+    subprocess.run(["systemctl", "--user", "stop", svc], check=False)
 
 
-def status() -> dict:
-    """Return daemon status info."""
-    running = is_running()
-    pid = None
-    if os.path.exists(PID_PATH):
-        try:
-            pid = int(open(PID_PATH).read().strip())
-        except (ValueError, OSError):
-            pass
-    return {
-        "running": running,
-        "pid": pid,
-        "socket": SOCKET_PATH if os.path.exists(SOCKET_PATH) else None,
-    }
+def status(engine: str = None) -> dict:
+    """Return status for one or all engines."""
+    engines = [engine] if engine else list(ENGINE_DAEMONS.keys())
+    result = {}
+    for eng in engines:
+        sock_path, pid_path, svc = _paths(eng)
+        running = is_running(eng)
+        pid = None
+        if os.path.exists(pid_path):
+            try:
+                pid = int(open(pid_path).read().strip())
+            except (ValueError, OSError):
+                pass
+        result[eng] = {
+            "running": running,
+            "pid": pid,
+            "socket": sock_path if os.path.exists(sock_path) else None,
+            "service": svc,
+        }
+    return result
 
 
-def synthesize(text: str, voice: str, speed: float, out_path: str,
-               auto_start: bool = True, timeout: float = 60.0) -> str:
-    """Send synthesis request to daemon. Returns output path.
+def synthesize(engine: str, request: dict, auto_start: bool = True,
+               timeout: float = 60.0) -> str:
+    """Send a synthesis request to a daemon. Returns output path.
 
-    If daemon is not running and auto_start=True, tries to start it first.
+    Request dict should contain at minimum: {"text": "...", "out": "/path/to.wav"}
+    Additional keys depend on the engine (voice, speed, lang, speaker, etc.)
     """
-    if not os.path.exists(SOCKET_PATH):
+    sock_path, _, _ = _paths(engine)
+
+    if not os.path.exists(sock_path):
         if auto_start:
-            ok = start()
+            ok = start(engine, timeout=30.0)
             if not ok:
                 raise RuntimeError(
-                    "Kitten daemon failed to start. Run: marmalade-tts daemon start"
+                    f"{engine} daemon failed to start. "
+                    f"Run: marmalade-tts daemon start --engine {engine}"
                 )
         else:
-            raise RuntimeError("Kitten daemon not running.")
-
-    request = {
-        "text": text,
-        "voice": voice,
-        "speed": speed,
-        "out": out_path,
-    }
+            raise RuntimeError(f"{engine} daemon not running.")
 
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.settimeout(timeout)
     try:
-        client.connect(SOCKET_PATH)
+        client.connect(sock_path)
         client.sendall((json.dumps(request) + "\n").encode())
         buf = b""
         while b"\n" not in buf:

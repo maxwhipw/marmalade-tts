@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from . import Engine
-from .. import daemon
+from .. import daemon as dmgr
 
 KITTEN_VENV   = os.path.expanduser("~/.local/share/kittentts-venv")
 KITTEN_PYTHON = os.path.join(KITTEN_VENV, "bin", "python")
@@ -37,7 +37,8 @@ class KittenEngine(Engine):
         v = voice or self.voice
 
         if self.use_daemon:
-            daemon.synthesize(text, v, speed, out_path, auto_start=True)
+            request = {"text": text, "voice": v, "speed": speed, "out": out_path}
+            dmgr.synthesize("kitten", request, auto_start=True)
             return
 
         # Fallback: direct subprocess (slow cold start)

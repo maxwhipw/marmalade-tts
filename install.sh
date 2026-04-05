@@ -24,10 +24,13 @@ mkdir -p "$BIN_DIR"
 cp "$SCRIPT_DIR/marmalade-tts" "$BIN_DIR/marmalade-tts"
 chmod +x "$BIN_DIR/marmalade-tts"
 
-# -- Daemon script --
-echo "  → Installing kitten daemon to $DATA_DIR"
+# -- Daemon scripts --
+echo "  → Installing daemon scripts to $DATA_DIR"
 mkdir -p "$DATA_DIR"
-cp "$SCRIPT_DIR/daemon/kitten-daemon.py" "$DATA_DIR/kitten-daemon.py"
+for f in "$SCRIPT_DIR"/daemon/*-daemon.py; do
+    cp "$f" "$DATA_DIR/"
+    echo "    $(basename $f)"
+done
 
 # -- Default config (only if missing) --
 if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
@@ -38,10 +41,13 @@ else
     echo "  → Config already exists, skipping"
 fi
 
-# -- Systemd service --
-echo "  → Installing systemd service"
+# -- Systemd services --
+echo "  → Installing systemd services"
 mkdir -p "$SYSTEMD_DIR"
-cp "$SCRIPT_DIR/systemd/marmalade-kitten.service" "$SYSTEMD_DIR/"
+for f in "$SCRIPT_DIR"/systemd/marmalade-*.service; do
+    cp "$f" "$SYSTEMD_DIR/"
+    echo "    $(basename $f)"
+done
 systemctl --user daemon-reload
 
 echo ""

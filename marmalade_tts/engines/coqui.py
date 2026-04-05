@@ -1,4 +1,4 @@
-"""Coqui TTS engine — subprocess to patched pipx venv."""
+"""Coqui TTS engine — daemon client with subprocess fallback."""
 
 import os
 import shutil
@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 from . import Engine
+from .. import daemon as dmgr
 
 
 class CoquiEngine(Engine):
@@ -15,8 +16,15 @@ class CoquiEngine(Engine):
         self.cfg = cfg
         self.model = cfg.get("model", "tts_models/en/ljspeech/tacotron2-DDC")
         self.device = cfg.get("device", "cpu")
+        self.use_daemon = cfg.get("daemon", False)
 
     def synthesize(self, text: str, out_path: str, speed: float = 1.0, **kwargs):
+        if self.use_daemon:
+            request = {"text": text, "out": out_path}
+            dmgr.synthesize("coqui", request, auto_start=True, timeout=120.0)
+            return
+
+        # Subprocess fallback
         if not shutil.which("tts"):
             sys.exit("[coqui] `tts` CLI not found. Run: pipx install coqui-tts")
 

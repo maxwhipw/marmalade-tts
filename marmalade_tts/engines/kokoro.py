@@ -1,10 +1,11 @@
-"""Kokoro TTS engine — subprocess to pipx CLI."""
+"""Kokoro TTS engine — daemon client with subprocess fallback."""
 
 import os
 import subprocess
 import sys
 
 from . import Engine
+from .. import daemon as dmgr
 
 VOICES_BY_LANG = {
     "a": ["af_heart", "af_bella", "af_nicole", "am_adam", "am_michael"],
@@ -28,12 +29,19 @@ class KokoroEngine(Engine):
         self.voice = cfg.get("voice", "af_heart")
         self.lang = cfg.get("lang", "a")
         self.device = cfg.get("device", "cpu")
+        self.use_daemon = cfg.get("daemon", False)
 
     def synthesize(self, text: str, out_path: str, voice: str = None,
                    speed: float = 1.0, lang: str = None, **kwargs):
         v = voice or self.voice
         la = lang or self.lang
 
+        if self.use_daemon:
+            request = {"text": text, "voice": v, "speed": speed, "lang": la, "out": out_path}
+            dmgr.synthesize("kokoro", request, auto_start=True)
+            return
+
+        # Subprocess fallback
         env = os.environ.copy()
         if self.device == "cpu":
             env["CUDA_VISIBLE_DEVICES"] = ""
