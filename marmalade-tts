@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""marmalade-tts CLI entrypoint."""
+import sys
+import os
+
+# Add the lib directory to path
+lib_dir = os.path.expanduser("~/.local/lib/marmalade-tts")
+if lib_dir not in sys.path:
+    sys.path.insert(0, lib_dir)
+
+from marmalade_tts.cli import main
+
+main()

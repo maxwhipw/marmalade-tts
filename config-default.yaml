@@ -1,0 +1,48 @@
+# marmalade-tts configuration
+# Edit directly or use: marmalade-tts config set <key> <value>
+
+defaults:
+  engine: kokoro
+  device: cpu
+  speed: 1.0
+  play: true
+
+presets:
+  fast:
+    kitten: nano
+    kokoro: af_heart
+    piper: en_US-lessac-medium
+    coqui: tts_models/en/ljspeech/tacotron2-DDC
+  balanced:
+    kitten: micro
+    kokoro: af_heart
+    piper: en_US-lessac-medium
+    coqui: tts_models/en/ljspeech/tacotron2-DDC
+  quality:
+    kitten: mini
+    kokoro: af_heart
+    piper: en_US-lessac-medium
+    coqui: tts_models/en/ljspeech/tacotron2-DDC
+
+engines:
+  kitten:
+    device: cpu
+    model_size: micro
+    voice: Kiki
+    daemon: true
+
+  kokoro:
+    device: cpu
+    voice: af_heart
+    lang: a
+    daemon: false
+
+  piper:
+    device: cpu
+    model: ~/.local/share/piper/voices/en_US-lessac-medium.onnx
+    daemon: false
+
+  coqui:
+    device: cpu
+    model: tts_models/en/ljspeech/tacotron2-DDC
+    daemon: false
