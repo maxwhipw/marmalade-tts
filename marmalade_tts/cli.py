@@ -8,6 +8,7 @@ import yaml
 from . import __version__
 from . import config as cfg_mod
 from . import daemon
+from . import preprocessing as pp
 from .playback import play_wav, make_tmp_wav
 from .completion import bash_completion, zsh_completion
 from .engines.kitten import KittenEngine, VOICES as KITTEN_VOICES
@@ -35,7 +36,6 @@ def resolve_text(raw: str) -> str:
         path = raw[1:]
         with open(path) as f:
             return f.read()
-    # Don't auto-read arbitrary paths that look like sentences
     return raw
 
 
@@ -68,7 +68,6 @@ def cmd_config(args: list):
         value = " ".join(args[2:])
         cfg_mod.set_path(config, key, value)
         cfg_mod.save(config)
-        # Re-read to show parsed value
         val, _ = cfg_mod.get_path(config, key)
         print(f"[config] {key} = {val}")
         return
@@ -132,20 +131,15 @@ def looks_like_voice(engine: str, token: str) -> bool:
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    # ── Quick intercepts before argparse ──
     argv = sys.argv[1:]
 
-    # Tab completion
+    # ── Quick intercepts ──
     if "--completion" in argv:
         idx = argv.index("--completion")
         shell = argv[idx + 1] if idx + 1 < len(argv) else "bash"
-        if shell == "zsh":
-            print(zsh_completion())
-        else:
-            print(bash_completion())
+        print(zsh_completion() if shell == "zsh" else bash_completion())
         return
 
-    # Subcommands (before argparse to avoid engine-required errors)
     if argv and argv[0] == "config":
         cmd_config(argv[1:])
         return
@@ -153,11 +147,11 @@ def main():
         cmd_daemon(argv[1:])
         return
 
-    # If first token is not an engine name and a preset flag is present,
-    # inject the default engine so argparse doesn't choke.
-    has_preset = any(f in argv for f in ("--fast", "--balanced", "--quality"))
+    # ── If first token is not an engine name, inject default engine ──
+    # This enables: marmalade-tts "hello" (uses defaults.engine)
+    # and:          marmalade-tts --fast "hello"
     first_is_engine = argv and argv[0] in ENGINE_NAMES
-    if has_preset and not first_is_engine:
+    if not first_is_engine and argv:
         config_tmp = cfg_mod.load()
         default_eng = config_tmp.get("defaults", {}).get("engine", "kitten")
         argv.insert(0, default_eng)
@@ -170,18 +164,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
-  marmalade-tts kokoro "Hello world"
-  marmalade-tts kitten Kiki "Hello from Kiki"
-  marmalade-tts --fast "Quick test"
-  marmalade-tts piper "Hello from Piper" --out hello.wav
-  marmalade-tts config set engines.kitten.voice Hugo
+  marmalade-tts "Hello world"                    # uses default engine
+  marmalade-tts kokoro "Hello world"             # specify engine
+  marmalade-tts kitten Kiki "Hello from Kiki"    # specify engine + voice
+  marmalade-tts --fast "Quick test"              # fast preset
+  marmalade-tts --no-preprocessing "$100 test"   # skip text normalization
+  marmalade-tts config set defaults.engine kitten
   marmalade-tts daemon start
   eval "$(marmalade-tts --completion bash)"
 """,
     )
-    parser.add_argument("engine", nargs="?", choices=ENGINE_NAMES,
-                        default=None,
-                        help="TTS engine (optional if preset flag used)")
+    parser.add_argument("engine", nargs="?", choices=ENGINE_NAMES, default=None,
+                        help="TTS engine (uses defaults.engine if omitted)")
     parser.add_argument("--text", "-t", default=None,
                         help="Text to synthesize (alternative to positional)")
     parser.add_argument("--out", metavar="FILE",
@@ -196,13 +190,20 @@ Examples:
                         help="Language code — kokoro only (a/b/h/e/f/i/p/j/z)")
     parser.add_argument("--speaker", default=None,
                         help="Speaker id — piper multi-speaker models")
-    preset = parser.add_mutually_exclusive_group()
-    preset.add_argument("--fast", action="store_true",
-                        help="Fast preset (smallest models)")
-    preset.add_argument("--balanced", action="store_true",
-                        help="Balanced preset (mid-size models)")
-    preset.add_argument("--quality", action="store_true",
-                        help="Quality preset (best fidelity)")
+    # Presets
+    preset_grp = parser.add_mutually_exclusive_group()
+    preset_grp.add_argument("--fast", action="store_true", help="Fast preset")
+    preset_grp.add_argument("--balanced", action="store_true", help="Balanced preset")
+    preset_grp.add_argument("--quality", action="store_true", help="Quality preset")
+    # Preprocessing
+    pp_grp = parser.add_mutually_exclusive_group()
+    pp_grp.add_argument("--preprocessing", action="store_true", default=None,
+                        help="Enable text preprocessing (default: from config)")
+    pp_grp.add_argument("--no-preprocessing", action="store_true",
+                        help="Disable text preprocessing")
+    parser.add_argument("--list-rules", action="store_true",
+                        help="List all available preprocessing rules")
+    # Misc
     parser.add_argument("--list", action="store_true",
                         help="List voices/models for the engine")
     parser.add_argument("--version", action="version",
@@ -211,8 +212,13 @@ Examples:
                         help="Generate shell completion (bash/zsh)")
 
     args, extra = parser.parse_known_args()
-    # Anything argparse didn't consume goes into positional (the text + optional voice)
-    positional = extra
+    positional = extra  # text + optional voice override
+
+    # ── List rules ──
+    if args.list_rules:
+        print("Available preprocessing rules:")
+        pp.list_rules()
+        return
 
     # ── Load config ──
     config = cfg_mod.load()
@@ -227,12 +233,7 @@ Examples:
         preset_name = "quality"
 
     # ── Resolve engine ──
-    engine_name = args.engine
-    if not engine_name:
-        if preset_name:
-            engine_name = config.get("defaults", {}).get("engine", "kitten")
-        else:
-            parser.error("Engine is required (or use --fast/--balanced/--quality)")
+    engine_name = args.engine or config.get("defaults", {}).get("engine", "kitten")
 
     # ── Apply preset to engine config ──
     eng_cfg = cfg_mod.engine_cfg(config, engine_name)
@@ -247,7 +248,7 @@ Examples:
             else:
                 eng_cfg["model"] = preset_val
 
-    # ── Build engine instance ──
+    # ── Build engine ──
     engine = ENGINE_CLASSES[engine_name](eng_cfg)
 
     # ── List mode ──
@@ -255,34 +256,57 @@ Examples:
         engine.list_voices()
         return
 
-    # ── Resolve positional args: [voice] text ──
-    # --text flag takes priority as text source
+    # ── Resolve text ──
+    voice_arg = None
     if args.text:
         text = resolve_text(args.text)
-        # positional may still contain a voice override
-        voice_arg = positional[0] if positional and looks_like_voice(engine_name, positional[0]) else None
+        if positional and looks_like_voice(engine_name, positional[0]):
+            voice_arg = positional[0]
     elif not positional:
-        parser.error("Provide text (or --text or @file or -) for synthesis")
+        parser.error("Provide text (or --text / @file / -)")
     else:
         first = positional[0]
         rest = positional[1:]
-
         if looks_like_voice(engine_name, first) and rest:
             voice_arg = first
-            text_raw = " ".join(rest)
+            text = resolve_text(" ".join(rest))
         elif looks_like_voice(engine_name, first) and not rest:
             voice_arg = None
-            text_raw = first
+            text = resolve_text(first)
         else:
             voice_arg = None
-            text_raw = " ".join(positional)
+            text = resolve_text(" ".join(positional))
 
-        text = resolve_text(text_raw)
     if not text.strip():
         sys.exit("[marmalade-tts] No text to synthesize")
 
-    # ── Resolve voice from (1) --voice flag, (2) positional, (3) config ──
-    voice = args.voice or voice_arg  # None means engine uses its own default
+    # ── Preprocessing ──
+    do_preprocess = True  # default on
+    if args.no_preprocessing:
+        do_preprocess = False
+    elif args.preprocessing:
+        do_preprocess = True
+    else:
+        # Check config: defaults.preprocessing (default: true)
+        do_preprocess = config.get("defaults", {}).get("preprocessing", True)
+        # Check engine-specific override
+        eng_pp = eng_cfg.get("preprocessing")
+        if eng_pp is not None:
+            if isinstance(eng_pp, bool):
+                do_preprocess = eng_pp
+            elif isinstance(eng_pp, list):
+                do_preprocess = True  # explicit rule list = enabled
+
+    if do_preprocess:
+        # Get engine-specific rule list from config, or use default profile
+        custom_rules = eng_cfg.get("preprocessing")
+        if isinstance(custom_rules, list):
+            text = pp.preprocess(text, engine=engine_name, rules=custom_rules)
+        else:
+            text = pp.preprocess(text, engine=engine_name)
+
+    # ── Resolve voice ──
+    voice = args.voice or voice_arg
 
     # ── Output path ──
     if args.out:
@@ -310,7 +334,6 @@ Examples:
     # ── Playback ──
     if auto_play or args.play:
         play_wav(out_path)
-        # Clean up temp file after playback
         if not args.out and os.path.exists(out_path):
             os.unlink(out_path)
 

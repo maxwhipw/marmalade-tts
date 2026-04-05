@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """marmalade-tts CLI entrypoint."""
+import site
 import sys
 import os
 
-# Add the lib directory to path
+# Add the lib directory and deps venv to path
 lib_dir = os.path.expanduser("~/.local/lib/marmalade-tts")
+venv_site = os.path.join(lib_dir, ".venv", "lib",
+                         f"python{sys.version_info.major}.{sys.version_info.minor}",
+                         "site-packages")
+
 if lib_dir not in sys.path:
     sys.path.insert(0, lib_dir)
+if os.path.isdir(venv_site) and venv_site not in sys.path:
+    sys.path.insert(0, venv_site)
 
 from marmalade_tts.cli import main
 

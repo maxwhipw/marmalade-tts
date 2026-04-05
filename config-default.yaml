@@ -6,6 +6,7 @@ defaults:
   device: cpu
   speed: 1.0
   play: true
+  preprocessing: true    # text normalization ($100 → 100 dollars, etc.)
 
 presets:
   fast:
@@ -29,13 +30,14 @@ engines:
     device: cpu
     model_size: micro
     voice: Kiki
-    daemon: true
+    daemon: true           # keep model in RAM for instant synthesis
+    # preprocessing: true  # or a list of rules: [currency, number, filename]
 
   kokoro:
     device: cpu
     voice: af_heart
     lang: a
-    daemon: false
+    daemon: false          # set true to keep kokoro model in RAM (heavier)
 
   piper:
     device: cpu
