@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/max/.local/share/pipx/venvs/coqui-tts/bin/python \
-    /home/max/.local/share/marmalade-tts/coqui-daemon.py
+ExecStart=%h/.local/share/pipx/venvs/coqui-tts/bin/python \
+    %h/.local/share/marmalade-tts/coqui-daemon.py
 Restart=on-failure
 RestartSec=5
 Environment=COQUI_MODEL=tts_models/en/ljspeech/tacotron2-DDC

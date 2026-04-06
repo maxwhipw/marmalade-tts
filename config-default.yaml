@@ -1,5 +1,6 @@
 # marmalade-tts configuration
 # Edit directly or use: marmalade-tts config set <key> <value>
+# Full docs: see USAGE.md or marmalade-tts --list-effects
 
 defaults:
   engine: kokoro
@@ -37,7 +38,7 @@ engines:
     device: cpu
     voice: af_heart
     lang: a
-    daemon: false          # set true to keep kokoro model in RAM (heavier)
+    daemon: false          # set true to keep kokoro model in RAM (uses ~1.4 GB)
 
   piper:
     device: cpu
@@ -48,3 +49,20 @@ engines:
     device: cpu
     model: tts_models/en/ljspeech/tacotron2-DDC
     daemon: false
+
+# Audio effects — requires sox (apt install sox)
+# Custom presets combine built-in effects. Use --list-effects to see all options.
+#
+# Per-engine default effects are applied whenever that engine is used,
+# unless overridden on the command line with --effect.
+# Set to [] to disable defaults for a specific engine.
+#
+# effects:
+#   presets:
+#     my_voice:   ["pitch=-100", "reverb=30"]
+#     dramatic:   ["reverb=70", "bass=4", "echo=0.8:0.6:80:0.3"]
+#   defaults:
+#     kitten:   ["reverb=20"]      # subtle warmth on kitten by default
+#     kokoro:   []                 # no default effects
+#     piper:    []
+#     coqui:    []

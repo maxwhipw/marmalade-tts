@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/max/.local/share/pipx/venvs/kokoro/bin/python \
-    /home/max/.local/share/marmalade-tts/kokoro-daemon.py
+ExecStart=%h/.local/share/pipx/venvs/kokoro/bin/python \
+    %h/.local/share/marmalade-tts/kokoro-daemon.py
 Restart=on-failure
 RestartSec=5
 Environment=KOKORO_LANG=a

@@ -1,5 +1,7 @@
 """Shell tab-completion generation."""
 
+from .effects import EFFECTS, BUILTIN_PRESETS
+
 # Engine names and known voices for completion
 ENGINES = ["kitten", "kokoro", "piper", "coqui"]
 KITTEN_VOICES = ["Bella", "Jasper", "Luna", "Bruno", "Rosie", "Hugo", "Kiki", "Leo"]
@@ -10,17 +12,21 @@ KOKORO_VOICES = [
 ]
 SUBCOMMANDS = ["config", "daemon"]
 CONFIG_ACTIONS = ["show", "get", "set"]
-DAEMON_ACTIONS = ["start", "stop", "status"]
+DAEMON_ACTIONS = ["start", "stop", "status", "start-all", "stop-all"]
 CONFIG_PATHS = [
     "defaults.engine", "defaults.device", "defaults.speed", "defaults.play",
-    "engines.kitten.voice", "engines.kitten.model_size", "engines.kitten.device", "engines.kitten.daemon",
+    "defaults.preprocessing",
+    "engines.kitten.voice", "engines.kitten.model_size", "engines.kitten.device",
+    "engines.kitten.daemon", "engines.kitten.preprocessing",
     "engines.kokoro.voice", "engines.kokoro.lang", "engines.kokoro.device",
-    "engines.piper.model", "engines.piper.device",
-    "engines.coqui.model", "engines.coqui.device",
+    "engines.kokoro.daemon",
+    "engines.piper.model", "engines.piper.device", "engines.piper.daemon",
+    "engines.coqui.model", "engines.coqui.device", "engines.coqui.daemon",
     "presets.fast.kitten", "presets.fast.kokoro",
     "presets.balanced.kitten", "presets.balanced.kokoro",
     "presets.quality.kitten", "presets.quality.kokoro",
 ]
+EFFECT_NAMES = list(EFFECTS.keys()) + list(BUILTIN_PRESETS.keys())
 
 
 def bash_completion() -> str:
@@ -31,6 +37,7 @@ def bash_completion() -> str:
     config_actions = " ".join(CONFIG_ACTIONS)
     daemon_actions = " ".join(DAEMON_ACTIONS)
     config_paths = " ".join(CONFIG_PATHS)
+    effect_names = " ".join(EFFECT_NAMES)
 
     return f'''# marmalade-tts bash completion
 # Add to .bashrc:  eval "$(marmalade-tts --completion bash)"
@@ -46,7 +53,10 @@ _marmalade_tts() {{
     local config_actions="{config_actions}"
     local daemon_actions="{daemon_actions}"
     local config_paths="{config_paths}"
-    local flags="--out --play --speed --voice --lang --speaker --fast --balanced --quality --list --completion"
+    local effect_names="{effect_names}"
+    local flags="--out --play --speed --voice --lang --speaker --fast --balanced --quality \\
+                 --effect --list-effects --list --preprocessing --no-preprocessing \\
+                 --list-rules --completion"
 
     # First positional: engine or subcommand
     if [[ $cword -eq 1 ]]; then
@@ -68,6 +78,8 @@ _marmalade_tts() {{
     if [[ "${{words[1]}}" == "daemon" ]]; then
         if [[ $cword -eq 2 ]]; then
             COMPREPLY=( $(compgen -W "$daemon_actions" -- "$cur") )
+        elif [[ "$prev" == "--engine" ]]; then
+            COMPREPLY=( $(compgen -W "$engines" -- "$cur") )
         fi
         return
     fi
@@ -82,9 +94,9 @@ _marmalade_tts() {{
         return
     fi
 
-    # Flags anywhere
-    if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "$flags" -- "$cur") )
+    # --effect flag values: complete effect names
+    if [[ "$prev" == "--effect" ]]; then
+        COMPREPLY=( $(compgen -W "$effect_names" -- "$cur") )
         return
     fi
 
@@ -108,6 +120,12 @@ _marmalade_tts() {{
         _filedir
         return
     fi
+
+    # Flags anywhere
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$flags" -- "$cur") )
+        return
+    fi
 }}
 
 complete -F _marmalade_tts marmalade-tts
@@ -118,6 +136,7 @@ def zsh_completion() -> str:
     engines = " ".join(ENGINES)
     kitten_voices = " ".join(KITTEN_VOICES)
     kokoro_voices = " ".join(KOKORO_VOICES)
+    effect_names = " ".join(EFFECT_NAMES)
 
     return f'''#compdef marmalade-tts
 # marmalade-tts zsh completion
@@ -128,9 +147,11 @@ _marmalade-tts() {{
     local -a subcommands=(config daemon)
     local -a kitten_voices=({kitten_voices})
     local -a kokoro_voices=({kokoro_voices})
+    local -a effect_names=({effect_names})
+    local -a daemon_actions=(start stop status start-all stop-all)
 
     _arguments \\
-        '1:engine:((${{engines}} ${{subcommands}}))' \\
+        '1:engine_or_subcmd:((${{engines}} ${{subcommands}}))' \\
         '2:voice_or_text:' \\
         '*:text:' \\
         '--out[Output WAV file]:file:_files' \\
@@ -142,7 +163,12 @@ _marmalade-tts() {{
         '--fast[Fast preset]' \\
         '--balanced[Balanced preset]' \\
         '--quality[Quality preset]' \\
+        '*--effect[Audio effect]:effect:((${{effect_names}}))' \\
+        '--list-effects[List available audio effects and presets]' \\
         '--list[List voices]' \\
+        '--preprocessing[Enable text preprocessing]' \\
+        '--no-preprocessing[Disable text preprocessing]' \\
+        '--list-rules[List preprocessing rules]' \\
         '--completion[Generate completion]:shell:(bash zsh)'
 }}
 

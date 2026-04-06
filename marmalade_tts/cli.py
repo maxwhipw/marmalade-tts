@@ -15,6 +15,7 @@ from .engines.kitten import KittenEngine, VOICES as KITTEN_VOICES
 from .engines.kokoro import KokoroEngine
 from .engines.piper import PiperEngine
 from .engines.coqui import CoquiEngine
+from . import effects as fx
 
 ENGINE_CLASSES = {
     "kitten": KittenEngine,
@@ -180,6 +181,11 @@ def main():
     if argv and argv[0] == "daemon":
         cmd_daemon(argv[1:])
         return
+    if "--list-effects" in argv:
+        config_tmp = cfg_mod.load()
+        user_presets = config_tmp.get("effects", {}).get("presets", {})
+        fx.list_effects(user_presets)
+        return
 
     # ── If first token is not an engine name, inject default engine ──
     # This enables: marmalade-tts "hello" (uses defaults.engine)
@@ -238,6 +244,12 @@ Examples:
     parser.add_argument("--list-rules", action="store_true",
                         help="List all available preprocessing rules")
     # Misc
+    parser.add_argument("--effect", metavar="EFFECT", action="append", dest="effects",
+                        help="Apply audio effect after synthesis (repeatable). "
+                             "Format: name or name=value, e.g. reverb=50, pitch=200, robot. "
+                             "Run --list-effects to see all effects and presets.")
+    parser.add_argument("--list-effects", action="store_true",
+                        help="List all available audio effects and presets")
     parser.add_argument("--list", action="store_true",
                         help="List voices/models for the engine")
     parser.add_argument("--version", action="version",
@@ -247,6 +259,12 @@ Examples:
 
     args, extra = parser.parse_known_args()
     positional = extra  # text + optional voice override
+
+    # ── List effects ──
+    if args.list_effects:
+        user_presets = config.get("effects", {}).get("presets", {})
+        fx.list_effects(user_presets)
+        return
 
     # ── List rules ──
     if args.list_rules:
@@ -363,6 +381,37 @@ Examples:
         synth_kwargs["speaker"] = args.speaker
 
     engine.synthesize(text, out_path, **synth_kwargs)
+
+    # ── Effects ──
+    # Resolve the effect list: CLI --effect flags override engine defaults.
+    # If the user passes any --effect, those are used as-is (engine defaults
+    # are NOT appended — the CLI flag is an explicit override, not an addition).
+    # If no --effect is given, fall back to effects.defaults.<engine> in config.
+    cli_effects = args.effects or []
+    if cli_effects:
+        effect_list = cli_effects
+    else:
+        effect_list = (
+            config.get("effects", {})
+                  .get("defaults", {})
+                  .get(engine_name, [])
+        )
+
+    if effect_list:
+        if not fx.sox_available():
+            print(
+                "[marmalade-tts] Note: sox is not installed — audio effects were skipped.\n"
+                "  To enable effects: apt install sox   or   brew install sox",
+                file=sys.stderr,
+            )
+        else:
+            try:
+                fx.apply_effects(out_path, out_path, effect_list, config)
+            except ValueError as e:
+                print(f"[marmalade-tts] Effect warning: {e}", file=sys.stderr)
+            except RuntimeError as e:
+                print(f"[marmalade-tts] Effect warning: {e}", file=sys.stderr)
+
     print(f"[marmalade-tts] Generated: {out_path}", file=sys.stderr)
 
     # ── Playback ──

@@ -1,0 +1,228 @@
+"""Tests for marmalade_tts.daemon — path helpers, status, start/stop logic."""
+
+import sys
+import os
+import signal
+import tempfile
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import pytest
+from unittest.mock import patch, MagicMock, mock_open
+
+import marmalade_tts.daemon as daemon_mod
+
+
+# ── _paths ────────────────────────────────────────────────────────────────────
+
+class TestPaths:
+    def test_all_engines_have_paths(self):
+        for engine in ["kitten", "kokoro", "piper", "coqui"]:
+            sock, pid, svc, script = daemon_mod._paths(engine)
+            assert sock.endswith(".sock")
+            assert pid.endswith(".pid")
+            assert svc.endswith(".service")
+            assert script.endswith("-daemon.py")
+
+    def test_paths_under_base_dir(self):
+        base = daemon_mod.BASE_DIR
+        for engine in ["kitten", "kokoro", "piper", "coqui"]:
+            sock, pid, svc, script = daemon_mod._paths(engine)
+            assert sock.startswith(base)
+            assert pid.startswith(base)
+            assert script.startswith(base)
+
+    def test_unknown_engine_raises(self):
+        with pytest.raises(KeyError):
+            daemon_mod._paths("nonexistent")
+
+
+# ── is_running ────────────────────────────────────────────────────────────────
+
+class TestIsRunning:
+    def test_no_pid_file(self, tmp_path):
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            assert daemon_mod.is_running("kitten") is False
+
+    def test_pid_file_process_alive(self, tmp_path):
+        pid_path = tmp_path / "kitten.pid"
+        pid_path.write_text(str(os.getpid()))  # current process is definitely alive
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            assert daemon_mod.is_running("kitten") is True
+
+    def test_pid_file_process_dead(self, tmp_path):
+        pid_path = tmp_path / "kitten.pid"
+        pid_path.write_text("999999")  # very unlikely to be a real PID
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            # Should return False (process not found → OSError)
+            result = daemon_mod.is_running("kitten")
+            assert result is False
+
+    def test_corrupt_pid_file(self, tmp_path):
+        pid_path = tmp_path / "kitten.pid"
+        pid_path.write_text("not_a_number")
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            assert daemon_mod.is_running("kitten") is False
+
+
+# ── _systemd_available ────────────────────────────────────────────────────────
+
+class TestSystemdAvailable:
+    def test_returns_bool(self):
+        result = daemon_mod._systemd_available()
+        assert isinstance(result, bool)
+
+    def test_returns_false_when_systemctl_missing(self):
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            assert daemon_mod._systemd_available() is False
+
+    def test_returns_false_on_timeout(self):
+        import subprocess
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("systemctl", 3)):
+            assert daemon_mod._systemd_available() is False
+
+    def test_returns_true_when_running(self):
+        m = MagicMock()
+        m.returncode = 0
+        with patch("subprocess.run", return_value=m):
+            assert daemon_mod._systemd_available() is True
+
+
+# ── _service_file_exists ──────────────────────────────────────────────────────
+
+class TestServiceFileExists:
+    def test_missing_service(self, tmp_path):
+        with patch("os.path.expanduser", side_effect=lambda p: p.replace("~", str(tmp_path))):
+            result = daemon_mod._service_file_exists("nonexistent.service")
+            assert result is False
+
+    def test_existing_service(self, tmp_path):
+        svc_dir = tmp_path / ".config" / "systemd" / "user"
+        svc_dir.mkdir(parents=True)
+        (svc_dir / "marmalade-kitten.service").write_text("[Unit]\n")
+        with patch("os.path.expanduser", side_effect=lambda p: p.replace("~", str(tmp_path))):
+            result = daemon_mod._service_file_exists("marmalade-kitten.service")
+            assert result is True
+
+
+# ── status ────────────────────────────────────────────────────────────────────
+
+class TestStatus:
+    def test_all_engines_returned(self, tmp_path):
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            result = daemon_mod.status()
+        assert set(result.keys()) == {"kitten", "kokoro", "piper", "coqui"}
+
+    def test_single_engine(self, tmp_path):
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            result = daemon_mod.status("kitten")
+        assert list(result.keys()) == ["kitten"]
+
+    def test_not_running_state(self, tmp_path):
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            result = daemon_mod.status("kitten")
+        assert result["kitten"]["running"] is False
+        assert result["kitten"]["pid"] is None
+        assert result["kitten"]["socket"] is None
+
+    def test_running_state(self, tmp_path):
+        pid_path = tmp_path / "kitten.pid"
+        pid_path.write_text(str(os.getpid()))
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")  # exists
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            result = daemon_mod.status("kitten")
+        assert result["kitten"]["running"] is True
+        assert result["kitten"]["pid"] == os.getpid()
+        assert result["kitten"]["socket"] is not None
+
+    def test_status_has_service_key(self, tmp_path):
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            result = daemon_mod.status("kitten")
+        assert "service" in result["kitten"]
+        assert "marmalade-kitten.service" in result["kitten"]["service"]
+
+
+# ── stop ─────────────────────────────────────────────────────────────────────
+
+class TestStop:
+    def test_stop_via_systemd(self, tmp_path):
+        with patch.object(daemon_mod, "_systemd_available", return_value=True):
+            with patch.object(daemon_mod, "_service_file_exists", return_value=True):
+                with patch("subprocess.run") as mock_run:
+                    daemon_mod.stop("kitten")
+                    mock_run.assert_called_once()
+                    cmd = mock_run.call_args[0][0]
+                    assert "stop" in cmd
+                    assert "marmalade-kitten.service" in cmd
+
+    def test_stop_direct_via_pid(self, tmp_path):
+        pid_path = tmp_path / "kitten.pid"
+        pid_path.write_text("99999")
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch.object(daemon_mod, "_systemd_available", return_value=False):
+                with patch.object(daemon_mod, "_service_file_exists", return_value=False):
+                    with patch("os.kill") as mock_kill:
+                        daemon_mod.stop("kitten")
+                    mock_kill.assert_called_once_with(99999, signal.SIGTERM)
+
+    def test_stop_direct_no_pid_file_is_noop(self, tmp_path):
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch.object(daemon_mod, "_systemd_available", return_value=False):
+                with patch.object(daemon_mod, "_service_file_exists", return_value=False):
+                    with patch("os.kill") as mock_kill:
+                        daemon_mod.stop("kitten")
+                    mock_kill.assert_not_called()
+
+
+# ── synthesize socket protocol ────────────────────────────────────────────────
+
+class TestSynthesizeSocket:
+    def test_raises_when_not_running_and_no_autostart(self, tmp_path):
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with pytest.raises(RuntimeError, match="not running"):
+                daemon_mod.synthesize(
+                    "kitten",
+                    {"text": "hi", "out": "/tmp/x.wav"},
+                    auto_start=False
+                )
+
+    def test_sends_correct_json_and_returns_path(self, tmp_path):
+        """Mock the socket to verify JSON protocol."""
+        import socket as sock_mod
+        import json
+
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")  # make it "exist"
+
+        request = {"text": "hello", "out": "/tmp/x.wav", "voice": "Kiki", "speed": 1.0}
+        response = json.dumps({"ok": True, "out": "/tmp/x.wav"}) + "\n"
+
+        mock_sock = MagicMock()
+        mock_sock.recv.return_value = response.encode()
+        mock_sock.__enter__ = MagicMock(return_value=mock_sock)
+        mock_sock.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch("socket.socket", return_value=mock_sock):
+                result = daemon_mod.synthesize("kitten", request, auto_start=False)
+
+        assert result == "/tmp/x.wav"
+        # Verify JSON was sent
+        sent = mock_sock.sendall.call_args[0][0].decode()
+        sent_obj = json.loads(sent.strip())
+        assert sent_obj["text"] == "hello"
+
+    def test_daemon_error_response_raises(self, tmp_path):
+        import json
+
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")
+
+        response = json.dumps({"ok": False, "error": "synthesis failed"}) + "\n"
+        mock_sock = MagicMock()
+        mock_sock.recv.return_value = response.encode()
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch("socket.socket", return_value=mock_sock):
+                with pytest.raises(RuntimeError, match="synthesis failed"):
+                    daemon_mod.synthesize("kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False)
