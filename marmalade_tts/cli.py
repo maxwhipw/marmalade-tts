@@ -256,6 +256,17 @@ Examples:
                         version=f"marmalade-tts {__version__}")
     parser.add_argument("--completion", metavar="SHELL",
                         help="Generate shell completion (bash/zsh)")
+    # Agent / scripting flags
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="Suppress all status output on stderr")
+    parser.add_argument("--json", action="store_true",
+                        help="Print a JSON result object to stdout instead of status text")
+    parser.add_argument("--print-path", action="store_true",
+                        help="Print the output WAV path to stdout (useful for scripts)")
+    parser.add_argument("--stdin", action="store_true",
+                        help="Read text from stdin (shorthand for passing -)")
+    parser.add_argument("--no-play", action="store_true",
+                        help="Never play audio, even if defaults.play is true")
 
     args, extra = parser.parse_known_args()
     positional = extra  # text + optional voice override
@@ -310,7 +321,9 @@ Examples:
 
     # ── Resolve text ──
     voice_arg = None
-    if args.text:
+    if args.stdin:
+        text = sys.stdin.read()
+    elif args.text:
         text = resolve_text(args.text)
         if positional and looks_like_voice(engine_name, positional[0]):
             voice_arg = positional[0]
@@ -412,10 +425,26 @@ Examples:
             except RuntimeError as e:
                 print(f"[marmalade-tts] Effect warning: {e}", file=sys.stderr)
 
-    print(f"[marmalade-tts] Generated: {out_path}", file=sys.stderr)
+    # ── Output reporting ──
+    if args.json:
+        import json
+        result = {
+            "ok": True,
+            "engine": engine_name,
+            "voice": voice or eng_cfg.get("voice"),
+            "out": out_path,
+            "effects": effect_list,
+            "text": text,
+        }
+        print(json.dumps(result))
+    elif args.print_path:
+        print(out_path)
+    elif not args.quiet:
+        print(f"[marmalade-tts] Generated: {out_path}", file=sys.stderr)
 
     # ── Playback ──
-    if auto_play or args.play:
+    should_play = (auto_play or args.play) and not args.no_play
+    if should_play:
         play_wav(out_path)
         if not args.out and os.path.exists(out_path):
             os.unlink(out_path)

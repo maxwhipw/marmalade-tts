@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# speak-clipboard — read the clipboard (Ctrl+C contents) aloud via marmalade-tts
+#
+# Usage: bind to a KDE global shortcut.
+#   KDE Settings → Shortcuts → Custom Shortcuts → New Script/Command
+#   Trigger: keyboard shortcut (e.g. Meta+Shift+C)
+#   Action:  /path/to/speak-clipboard
+#
+# This reads the CLIPBOARD buffer (what you last copied with Ctrl+C),
+# not the PRIMARY selection.  For highlighted text, use speak-selection instead.
+
+set -euo pipefail
+
+MARMALADE_TTS="${MARMALADE_TTS:-marmalade-tts}"
+
+# ── Get clipboard ──────────────────────────────────────────────────────────
+
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    if command -v wl-paste &>/dev/null; then
+        TEXT="$(wl-paste --no-newline 2>/dev/null || true)"
+    else
+        notify-send "marmalade-tts" "Install wl-clipboard: sudo apt install wl-clipboard" \
+                    --icon=dialog-warning 2>/dev/null || true
+        exit 1
+    fi
+else
+    if command -v xclip &>/dev/null; then
+        TEXT="$(xclip -selection clipboard -o 2>/dev/null || true)"
+    elif command -v xsel &>/dev/null; then
+        TEXT="$(xsel --clipboard --output 2>/dev/null || true)"
+    else
+        notify-send "marmalade-tts" "Install xclip: sudo apt install xclip" \
+                    --icon=dialog-warning 2>/dev/null || true
+        exit 1
+    fi
+fi
+
+# ── Validate ───────────────────────────────────────────────────────────────
+
+TEXT="${TEXT//[$'\t\r\n']/ }"
+TEXT="$(echo "$TEXT" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+
+if [ -z "$TEXT" ]; then
+    notify-send "marmalade-tts" "Clipboard is empty" \
+                --icon=dialog-information 2>/dev/null || true
+    exit 0
+fi
+
+MAX_CHARS=2000
+if [ "${#TEXT}" -gt "$MAX_CHARS" ]; then
+    notify-send "marmalade-tts" \
+        "Clipboard too long (${#TEXT} chars, max $MAX_CHARS). Truncating..." \
+        --icon=dialog-warning 2>/dev/null || true
+    TEXT="${TEXT:0:$MAX_CHARS}"
+fi
+
+# ── Speak ──────────────────────────────────────────────────────────────────
+
+exec "$MARMALADE_TTS" --quiet --no-play --out /tmp/marmalade-clipboard.wav \
+    "$TEXT" \
+    && aplay /tmp/marmalade-clipboard.wav 2>/dev/null \
+    || "$MARMALADE_TTS" --quiet "$TEXT"

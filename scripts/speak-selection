@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# speak-selection — pipe the current X11/Wayland selection to marmalade-tts
+#
+# Usage: bind this script to a KDE global shortcut.
+#   KDE Settings → Shortcuts → Custom Shortcuts → New Script/Command
+#   Trigger: keyboard shortcut (e.g. Meta+Shift+S)
+#   Action:  /path/to/speak-selection
+#
+# Dependencies:
+#   - marmalade-tts (in PATH, or set MARMALADE_TTS below)
+#   - xclip (X11) or wl-paste (Wayland) for clipboard/selection
+#
+# The script tries the PRIMARY selection (highlighted text) first,
+# then falls back to the CLIPBOARD (Ctrl+C contents).
+
+set -euo pipefail
+
+MARMALADE_TTS="${MARMALADE_TTS:-marmalade-tts}"
+
+# ── Detect display server ──────────────────────────────────────────────────
+
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    # Wayland: wl-paste reads clipboard; primary selection needs wl-paste --primary
+    if command -v wl-paste &>/dev/null; then
+        TEXT="$(wl-paste --primary --no-newline 2>/dev/null \
+                || wl-paste --no-newline 2>/dev/null \
+                || true)"
+    else
+        notify-send "marmalade-tts" "Install wl-clipboard: sudo apt install wl-clipboard" \
+                    --icon=dialog-warning 2>/dev/null || true
+        exit 1
+    fi
+else
+    # X11: xclip reads PRIMARY (highlighted) or CLIPBOARD
+    if command -v xclip &>/dev/null; then
+        TEXT="$(xclip -selection primary -o 2>/dev/null \
+                || xclip -selection clipboard -o 2>/dev/null \
+                || true)"
+    elif command -v xsel &>/dev/null; then
+        TEXT="$(xsel --primary --output 2>/dev/null \
+                || xsel --clipboard --output 2>/dev/null \
+                || true)"
+    else
+        notify-send "marmalade-tts" "Install xclip: sudo apt install xclip" \
+                    --icon=dialog-warning 2>/dev/null || true
+        exit 1
+    fi
+fi
+
+# ── Validate ───────────────────────────────────────────────────────────────
+
+TEXT="${TEXT//[$'\t\r\n']/ }"   # collapse newlines to spaces
+TEXT="$(echo "$TEXT" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"  # trim
+
+if [ -z "$TEXT" ]; then
+    notify-send "marmalade-tts" "Nothing selected" \
+                --icon=dialog-information 2>/dev/null || true
+    exit 0
+fi
+
+# Limit to avoid accidentally speaking an entire document
+MAX_CHARS=2000
+if [ "${#TEXT}" -gt "$MAX_CHARS" ]; then
+    notify-send "marmalade-tts" \
+        "Selection too long (${#TEXT} chars, max $MAX_CHARS). Truncating..." \
+        --icon=dialog-warning 2>/dev/null || true
+    TEXT="${TEXT:0:$MAX_CHARS}"
+fi
+
+# ── Speak ──────────────────────────────────────────────────────────────────
+
+exec "$MARMALADE_TTS" --quiet --no-play --out /tmp/marmalade-selection.wav \
+    "$TEXT" \
+    && aplay /tmp/marmalade-selection.wav 2>/dev/null \
+    || "$MARMALADE_TTS" --quiet "$TEXT"

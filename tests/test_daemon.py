@@ -178,7 +178,10 @@ class TestStop:
 
 class TestSynthesizeSocket:
     def test_raises_when_not_running_and_no_autostart(self, tmp_path):
+        """Raises when socket file is absent and auto_start=False."""
+        # The real check is os.path.exists(sock_path), not is_running()
         with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            # tmp_path has no kitten.sock, so synthesize should raise immediately
             with pytest.raises(RuntimeError, match="not running"):
                 daemon_mod.synthesize(
                     "kitten",
@@ -187,30 +190,66 @@ class TestSynthesizeSocket:
                 )
 
     def test_sends_correct_json_and_returns_path(self, tmp_path):
-        """Mock the socket to verify JSON protocol."""
-        import socket as sock_mod
+        """Verify the JSON-over-socket protocol used by the real daemon.synthesize."""
         import json
 
+        # Create the socket file so the path-existence check passes
         sock_path = tmp_path / "kitten.sock"
-        sock_path.write_text("")  # make it "exist"
+        sock_path.write_text("")
 
         request = {"text": "hello", "out": "/tmp/x.wav", "voice": "Kiki", "speed": 1.0}
-        response = json.dumps({"ok": True, "out": "/tmp/x.wav"}) + "\n"
+        response_bytes = (json.dumps({"ok": True, "out": "/tmp/x.wav"}) + "\n").encode()
 
-        mock_sock = MagicMock()
-        mock_sock.recv.return_value = response.encode()
-        mock_sock.__enter__ = MagicMock(return_value=mock_sock)
-        mock_sock.__exit__ = MagicMock(return_value=False)
+        # The real code does: client = socket.socket(...); client.connect(); client.sendall();
+        # client.recv(); client.close() — NOT used as a context manager.
+        mock_client = MagicMock()
+        mock_client.recv.return_value = response_bytes
 
         with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
-            with patch("socket.socket", return_value=mock_sock):
+            with patch("socket.socket", return_value=mock_client):
                 result = daemon_mod.synthesize("kitten", request, auto_start=False)
 
         assert result == "/tmp/x.wav"
-        # Verify JSON was sent
-        sent = mock_sock.sendall.call_args[0][0].decode()
-        sent_obj = json.loads(sent.strip())
+
+        # Verify connect was called with the real socket path
+        mock_client.connect.assert_called_once_with(str(sock_path))
+
+        # Verify the JSON payload sent over the wire
+        sent_bytes = mock_client.sendall.call_args[0][0]
+        sent_obj = json.loads(sent_bytes.decode().strip())
         assert sent_obj["text"] == "hello"
+        assert sent_obj["voice"] == "Kiki"
+        assert sent_obj["speed"] == 1.0
+
+        # Verify close() was called (finally block)
+        mock_client.close.assert_called_once()
+
+    def test_recv_loop_handles_fragmented_response(self, tmp_path):
+        """recv() may return partial data — the loop must accumulate until newline."""
+        import json
+
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")
+
+        full_response = json.dumps({"ok": True, "out": "/tmp/x.wav"}) + "\n"
+        # Split into 3 fragments
+        fragments = [
+            full_response[:10].encode(),
+            full_response[10:25].encode(),
+            full_response[25:].encode(),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.recv.side_effect = fragments
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch("socket.socket", return_value=mock_client):
+                result = daemon_mod.synthesize(
+                    "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False
+                )
+
+        assert result == "/tmp/x.wav"
+        assert mock_client.recv.call_count == 3
 
     def test_daemon_error_response_raises(self, tmp_path):
         import json
@@ -218,11 +257,30 @@ class TestSynthesizeSocket:
         sock_path = tmp_path / "kitten.sock"
         sock_path.write_text("")
 
-        response = json.dumps({"ok": False, "error": "synthesis failed"}) + "\n"
-        mock_sock = MagicMock()
-        mock_sock.recv.return_value = response.encode()
+        response = (json.dumps({"ok": False, "error": "synthesis failed"}) + "\n").encode()
+        mock_client = MagicMock()
+        mock_client.recv.return_value = response
 
         with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
-            with patch("socket.socket", return_value=mock_sock):
+            with patch("socket.socket", return_value=mock_client):
                 with pytest.raises(RuntimeError, match="synthesis failed"):
-                    daemon_mod.synthesize("kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False)
+                    daemon_mod.synthesize(
+                        "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False
+                    )
+
+    def test_close_called_even_on_recv_error(self, tmp_path):
+        """The finally block must call close() even when recv raises."""
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")
+
+        mock_client = MagicMock()
+        mock_client.recv.side_effect = OSError("connection reset")
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch("socket.socket", return_value=mock_client):
+                with pytest.raises(OSError):
+                    daemon_mod.synthesize(
+                        "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False
+                    )
+
+        mock_client.close.assert_called_once()

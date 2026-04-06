@@ -365,6 +365,72 @@ echo 'eval "$(marmalade-tts --completion bash)"' >> ~/.bashrc
 
 ---
 
+## KDE Global Hotkeys (speak selected text)
+
+The `scripts/` directory contains ready-to-use helpers for binding speech
+to keyboard shortcuts in KDE.
+
+Install the scripts:
+
+```sh
+cp scripts/speak-selection scripts/speak-clipboard scripts/marmalade-pipe ~/.local/bin/
+chmod +x ~/.local/bin/speak-selection ~/.local/bin/speak-clipboard ~/.local/bin/marmalade-pipe
+```
+
+Dependencies (pick one per display server):
+
+```sh
+sudo apt install xclip          # X11
+sudo apt install wl-clipboard   # Wayland
+```
+
+Bind in KDE:
+1. **System Settings → Shortcuts → Custom Shortcuts**
+2. New → Script/Command
+3. Set the trigger (e.g. `Meta+Shift+S`) and the action path
+
+| Script | What it speaks | Suggested shortcut |
+|--------|---------------|--------------------|
+| `speak-selection` | Highlighted text (primary selection) | `Meta+Shift+S` |
+| `speak-clipboard` | Last copied text (Ctrl+C) | `Meta+Shift+C` |
+
+See `scripts/SCRIPTS.md` for full details.
+
+---
+
+## Scripting & Agent Use
+
+marmalade-tts is designed to be used from scripts, agents, and pipelines.
+
+```sh
+# Read from stdin
+echo "Hello world" | marmalade-tts --stdin --no-play --out hello.wav
+echo "Hello world" | marmalade-pipe --out hello.wav   # convenience wrapper
+
+# Suppress all status output (exit code only)
+marmalade-tts --quiet "Hello"
+
+# Print only the output WAV path to stdout
+WAV=$(marmalade-tts --print-path --no-play "Hello")
+aplay "$WAV"
+
+# JSON result for structured consumption
+marmalade-tts --json --no-play "Hello"
+# → {"ok": true, "engine": "kokoro", "voice": "af_heart", "out": "/tmp/...", "text": "Hello", "effects": []}
+
+# Never play back, just generate
+marmalade-tts --no-play --out result.wav "Generate but don't play"
+
+# Combine flags for maximum scriptability
+cat script.txt | marmalade-tts --stdin --quiet --json --no-play --out speech.wav
+```
+
+Exit codes:
+- `0` — synthesis succeeded
+- `1` — error (bad args, engine failure, missing text, etc.)
+
+---
+
 ## Text Input Methods
 
 ```sh

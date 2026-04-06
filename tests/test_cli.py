@@ -370,3 +370,154 @@ class TestSynthesizeRouting:
         captured = capsys.readouterr()
         assert "sox" in captured.err.lower()
         assert "skipped" in captured.err.lower() or "not installed" in captured.err.lower()
+
+
+# ── Scripting / agent flags ───────────────────────────────────────────────────
+
+def _fake_synth_config(overrides=None):
+    cfg = {
+        "defaults": {"engine": "kokoro", "speed": 1.0, "play": True, "preprocessing": False},
+        "engines": {"kokoro": {"voice": "af_heart", "lang": "a", "daemon": False, "device": "cpu"}},
+        "presets": {},
+    }
+    if overrides:
+        for k, v in overrides.items():
+            cfg["defaults"][k] = v
+    return cfg
+
+
+def _run_cli_mocked(argv, config=None, out_path="/tmp/t.wav", stdin_text=None):
+    """
+    Run main() with a fully mocked kokoro engine.
+    Returns (synth_mock, stdout_str, stderr_str).
+    """
+    import io
+    cfg = config or _fake_synth_config()
+    synth = MagicMock()
+
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+
+    patches = [
+        patch("sys.argv", argv),
+        patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg),
+        patch("marmalade_tts.cli.make_tmp_wav", return_value=out_path),
+        patch("marmalade_tts.cli.play_wav"),
+        patch("marmalade_tts.cli.os.unlink"),
+        patch("marmalade_tts.cli.os.path.exists", return_value=True),
+        patch("marmalade_tts.cli.KokoroEngine", **{"return_value.synthesize": synth}),
+        patch("sys.stdout", stdout_buf),
+        patch("sys.stderr", stderr_buf),
+    ]
+    if stdin_text is not None:
+        patches.append(patch("sys.stdin", io.StringIO(stdin_text)))
+
+    with patch("marmalade_tts.cli.KokoroEngine") as MockKokoro:
+        MockKokoro.return_value.synthesize = synth
+        all_patches = patches[:-2]  # drop the stdout/stderr patches for re-add below
+        with patch("sys.argv", argv), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             patch("marmalade_tts.cli.make_tmp_wav", return_value=out_path), \
+             patch("marmalade_tts.cli.play_wav"), \
+             patch("marmalade_tts.cli.os.unlink"), \
+             patch("marmalade_tts.cli.os.path.exists", return_value=True), \
+             patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {"kokoro": MockKokoro}), \
+             patch("sys.stdout", stdout_buf), \
+             patch("sys.stderr", stderr_buf):
+            if stdin_text is not None:
+                import io as _io
+                with patch("sys.stdin", _io.StringIO(stdin_text)):
+                    main()
+            else:
+                main()
+
+    return synth, stdout_buf.getvalue(), stderr_buf.getvalue()
+
+
+class TestScriptingFlags:
+    def test_quiet_suppresses_stderr(self):
+        _, out, err = _run_cli_mocked(["marmalade-tts", "kokoro", "hello", "--quiet", "--no-play"])
+        assert "Generated" not in err
+        assert "marmalade-tts" not in err
+
+    def test_default_prints_generated_to_stderr(self):
+        cfg = _fake_synth_config({"play": False})
+        _, out, err = _run_cli_mocked(["marmalade-tts", "kokoro", "hello"], config=cfg)
+        assert "Generated" in err
+
+    def test_print_path_outputs_to_stdout(self):
+        cfg = _fake_synth_config({"play": False})
+        _, out, err = _run_cli_mocked(
+            ["marmalade-tts", "kokoro", "hello", "--print-path", "--no-play"],
+            config=cfg, out_path="/tmp/t.wav"
+        )
+        assert out.strip() == "/tmp/t.wav"
+        # "Generated" should NOT also appear on stderr when --print-path is used
+        assert "Generated" not in err
+
+    def test_json_output_is_valid_json(self):
+        import json
+        cfg = _fake_synth_config({"play": False})
+        _, out, err = _run_cli_mocked(
+            ["marmalade-tts", "kokoro", "hello", "--json", "--no-play"],
+            config=cfg
+        )
+        result = json.loads(out.strip())
+        assert result["ok"] is True
+        assert result["engine"] == "kokoro"
+        assert result["out"] == "/tmp/t.wav"
+        assert "text" in result
+
+    def test_json_includes_text_field(self):
+        import json
+        cfg = _fake_synth_config({"play": False})
+        _, out, _ = _run_cli_mocked(
+            ["marmalade-tts", "kokoro", "say this please", "--json", "--no-play"],
+            config=cfg
+        )
+        result = json.loads(out.strip())
+        assert result["text"] == "say this please"
+
+    def test_json_includes_effects_list(self):
+        import json
+        cfg = _fake_synth_config({"play": False})
+        with patch("marmalade_tts.cli.fx.sox_available", return_value=True), \
+             patch("marmalade_tts.cli.fx.apply_effects"):
+            _, out, _ = _run_cli_mocked(
+                ["marmalade-tts", "kokoro", "hello", "--json", "--no-play", "--effect", "reverb=30"],
+                config=cfg
+            )
+        result = json.loads(out.strip())
+        assert "reverb=30" in result["effects"]
+
+    def test_no_play_skips_playback_even_when_config_wants_play(self):
+        # Config says play=True, --no-play should override
+        cfg = _fake_synth_config({"play": True})
+        with patch("marmalade_tts.cli.play_wav") as mock_play:
+            with patch("sys.argv", ["marmalade-tts", "kokoro", "hello", "--no-play"]), \
+                 patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+                 patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"), \
+                 patch("marmalade_tts.cli.os.path.exists", return_value=True), \
+                 patch("marmalade_tts.cli.KokoroEngine") as MockKokoro, \
+                 patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {"kokoro": MockKokoro}):
+                MockKokoro.return_value.synthesize = MagicMock()
+                main()
+        mock_play.assert_not_called()
+
+    def test_stdin_flag_reads_stdin(self):
+        synth, _, _ = _run_cli_mocked(
+            ["marmalade-tts", "kokoro", "--stdin", "--no-play"],
+            stdin_text="hello from stdin"
+        )
+        synth.assert_called_once()
+        text_arg = synth.call_args[0][0]
+        assert "hello from stdin" in text_arg
+
+    def test_empty_text_exits_nonzero(self):
+        cfg = _fake_synth_config({"play": False})
+        with patch("sys.argv", ["marmalade-tts", "kokoro", "   "]), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code != 0

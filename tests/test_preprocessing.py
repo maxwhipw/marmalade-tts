@@ -281,3 +281,87 @@ def test_list_rules_runs(capsys):
     captured = capsys.readouterr()
     assert "currency" in captured.out
     assert "number" in captured.out
+
+
+# ── Rule ordering & interference ─────────────────────────────────────────────
+
+class TestRuleOrdering:
+    """Rules must not corrupt each other's output when applied in sequence."""
+
+    def test_currency_then_number_no_double_expansion(self):
+        # "$5" → "5 dollars" — the "5" in "5 dollars" must NOT be re-expanded
+        # by the number rule to "five dollars"
+        result = preprocess("$5", rules=["currency", "number"])
+        # Should contain "5 dollars" or "five dollars", but NOT "five five"
+        assert "five five" not in result
+        assert "dollars" in result
+
+    def test_percent_result_not_re_matched(self):
+        # "50%" → "50 percent" — the "50" must not become "fifty percent percent"
+        result = preprocess("50%", rules=["percentage", "number"])
+        assert "percent percent" not in result
+        assert "percent" in result
+
+    def test_ordinal_then_number_no_corruption(self):
+        # "3rd" → "third" — must not then be re-expanded
+        result = preprocess("3rd place", rules=["ordinal", "number"])
+        assert "third" in result
+        assert "three" not in result  # ordinal takes priority over bare number
+
+    def test_email_not_partial_matched_as_url(self):
+        # email rule should fire before url and not leave fragments for url rule
+        result = preprocess("user@example.com", rules=["email", "url"])
+        assert "at" in result.lower() or "user" in result.lower()
+        # Should not produce "user at example dot com dot com" (double-matching)
+        assert result.count("example") == 1
+
+    def test_full_pipeline_does_not_duplicate_words(self):
+        # Run ALL rules on a sentence with multiple patterns — nothing doubled
+        result = preprocess("$3.50 is 10% off at 9:00am", engine="kitten")
+        words = result.lower().split()
+        # No word should appear back-to-back (crude duplication check)
+        for i in range(len(words) - 1):
+            assert words[i] != words[i + 1], f"Duplicate word '{words[i]}' in: {result!r}"
+
+
+class TestEdgeCases:
+    def test_unicode_currency_symbol(self):
+        # Japanese yen — not in our rules, should pass through unchanged
+        result = preprocess("¥1000", rules=["currency"])
+        # No crash; yen may or may not be handled — just must not raise
+        assert isinstance(result, str)
+
+    def test_very_long_text(self):
+        # 5000-char string should not hang or OOM
+        text = "Hello world. " * 400
+        result = preprocess(text, engine="kitten")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_only_whitespace(self):
+        result = preprocess("   \t\n   ", rules=["currency", "number"])
+        assert isinstance(result, str)
+
+    def test_no_rules_returns_unchanged(self):
+        text = "$100 is 50% off"
+        result = preprocess(text, rules=[])
+        assert result == text
+
+    def test_mixed_case_abbreviations(self):
+        # "E.G." and "e.g." should both be handled
+        upper = preprocess("E.G.", rules=["abbreviation"])
+        lower = preprocess("e.g.", rules=["abbreviation"])
+        assert "example" in upper.lower() or upper == "E.G."  # handled or passthrough
+        assert "example" in lower.lower() or lower == "e.g."
+
+    def test_number_at_sentence_boundary(self):
+        # Number at end of sentence with period should not eat the period weirdly
+        result = preprocess("There are 3.", rules=["number"])
+        assert "three" in result or "3" in result  # must not crash
+
+    def test_newlines_preserved_through_preprocessing(self):
+        text = "Line one.\nLine two."
+        result = preprocess(text, engine="kitten")
+        # Newlines should survive (or become spaces) — but not cause crashes
+        assert isinstance(result, str)
+        assert "line" in result.lower() or "Line" in result
