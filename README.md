@@ -23,18 +23,28 @@ Install the engines you want — marmalade-tts works with whichever are present.
 ## Installation
 
 ```sh
-git clone http://george:3000/marmalade/marmalade-tts-cli
+git clone <repo-url>
 cd marmalade-tts-cli
 ./install.sh
+marmalade-tts init          # interactive setup wizard
 ```
 
-Then follow `INSTALL.md` for per-engine setup.
+Then follow `INSTALL.md` for per-engine dependencies (pip packages, models).
 
 ---
 
 ## Quick Start
 
 ```sh
+# Interactive setup (arrow keys to pick engines, voices, model sizes)
+marmalade-tts init
+
+# Non-interactive setup (for AI agents / scripts)
+marmalade-tts init --non-interactive --engines kitten,piper
+marmalade-tts init --non-interactive --engines kitten --set kitten.model_size=nano
+marmalade-tts init --non-interactive --engines kitten,kokoro \
+  --set kokoro.voice=am_adam --default-engine kokoro --test
+
 # Speak with the default engine
 marmalade-tts "Hello world"
 
@@ -276,6 +286,35 @@ systemctl --user start  marmalade-kitten
 ---
 
 ## Configuration
+
+### `marmalade-tts init`
+
+The setup wizard configures engines, voices, and defaults.
+Run it again at any time to change your setup.
+
+**Interactive mode** (default when stdin is a TTY):
+```sh
+marmalade-tts init
+```
+Uses arrow keys + space to multi-select engines, then walks through per-engine
+options (model size, voice, etc.).
+
+**Non-interactive mode** (for AI agents, scripts, CI):
+```sh
+marmalade-tts init --non-interactive --engines kitten,piper
+marmalade-tts init --non-interactive --engines kitten --set kitten.model_size=nano
+marmalade-tts init --non-interactive --engines kitten,kokoro \
+  --set kokoro.voice=am_adam --default-engine kokoro --test
+```
+
+Flags:
+- `--non-interactive` — skip TUI prompts (auto-enabled when stdin is not a TTY)
+- `--engines LIST` — comma-separated engines to enable
+- `--set ENGINE.KEY=VALUE` — override engine options (repeatable)
+- `--default-engine NAME` — set the default engine
+- `--test` — run a test synthesis after setup
+
+### Manual config
 
 Config is stored at `~/.config/marmalade-tts/config.yaml`.
 A default config is written on first run.

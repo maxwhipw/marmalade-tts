@@ -142,6 +142,124 @@ def cmd_daemon(args: list):
     sys.exit(1)
 
 
+def cmd_init(args: list):
+    """Handle `marmalade-tts init` — interactive or scripted engine setup.
+
+    Interactive (default):
+        marmalade-tts init
+
+    Non-interactive (for AI agents / scripts):
+        marmalade-tts init --non-interactive --engines kitten,piper
+        marmalade-tts init --non-interactive --engines kitten --set kitten.model_size=nano
+    """
+    import argparse as _ap
+    from .init import (
+        init_interactive, init_non_interactive, _is_tty, _ask_yn,
+        ENGINE_INFO, ENGINE_ORDER,
+    )
+
+    parser = _ap.ArgumentParser(prog="marmalade-tts init", add_help=True)
+    parser.add_argument("--non-interactive", action="store_true",
+                        help="Skip TUI prompts; require --engines")
+    parser.add_argument("--engines", type=str, default="",
+                        help="Comma-separated engines to enable (e.g. kitten,piper,kokoro)")
+    parser.add_argument("--set", action="append", dest="overrides", default=[],
+                        help="Engine option override: engine.key=value (repeatable)")
+    parser.add_argument("--default-engine", type=str, default="",
+                        help="Set the default engine explicitly")
+    parser.add_argument("--test", action="store_true",
+                        help="Run a test synthesis after setup")
+    parsed = parser.parse_args(args)
+
+    # ── Determine mode ──
+    non_interactive = parsed.non_interactive or not _is_tty()
+
+    # Parse --set overrides into {engine: {key: value}}
+    engine_options = {}
+    for override in parsed.overrides:
+        if "=" not in override or "." not in override.split("=", 1)[0]:
+            print(f"[init] Invalid --set format: {override!r}  (expected engine.key=value)",
+                  file=sys.stderr)
+            sys.exit(1)
+        path, value = override.split("=", 1)
+        eng, key = path.split(".", 1)
+        engine_options.setdefault(eng, {})[key] = value
+
+    if non_interactive:
+        # ── Non-interactive path ──
+        engine_list = [e.strip() for e in parsed.engines.split(",") if e.strip()]
+        if not engine_list:
+            print("[init] --engines required in non-interactive mode", file=sys.stderr)
+            sys.exit(1)
+
+        engines_cfg = init_non_interactive(engine_list, engine_options)
+        selected = engine_list
+        default_engine = parsed.default_engine or selected[0]
+
+    else:
+        # ── Interactive TUI path ──
+        selected, engines_cfg, default_engine = init_interactive()
+
+    # ── Write config ──
+    config = cfg_mod.load()
+    config.setdefault("defaults", {})["engine"] = default_engine
+    config.setdefault("defaults", {}).setdefault("speed", 1.0)
+    config.setdefault("defaults", {}).setdefault("play", True)
+    config.setdefault("defaults", {}).setdefault("preprocessing", True)
+
+    for eng, ecfg in engines_cfg.items():
+        config.setdefault("engines", {})[eng] = ecfg
+
+    cfg_mod.save(config)
+
+    print(f"  ✓ Config saved to {cfg_mod.CONFIG_PATH}")
+    print(f"  ✓ Default engine: {default_engine}")
+    print(f"  ✓ Engines configured: {', '.join(selected)}")
+
+    # ── Install hints ──
+    print()
+    for eng in selected:
+        if eng == "piper" and not engines_cfg.get(eng, {}).get("model"):
+            print("  📦 Piper needs a voice model. Download one:")
+            print("     mkdir -p ~/.local/share/piper/voices && cd ~/.local/share/piper/voices")
+            print("     wget <model-url>.onnx && wget <model-url>.onnx.json")
+            print("     See: https://huggingface.co/rhasspy/piper-voices")
+            print()
+        if eng == "kokoro":
+            print("  📦 Kokoro: install via  pipx install kokoro")
+            print()
+        if eng == "coqui" and not engines_cfg.get(eng, {}).get("model"):
+            print("  📦 Coqui: install via  pipx install coqui-tts")
+            print()
+
+    # ── Optional test synthesis ──
+    do_test = parsed.test
+    if not non_interactive and not do_test:
+        do_test = _ask_yn("  Run a test synthesis?", default=True)
+
+    if do_test:
+        print(f"\n  🔊 Testing {default_engine}...")
+        try:
+            eng_cfg = engines_cfg.get(default_engine, {})
+            engine = ENGINE_CLASSES[default_engine](eng_cfg)
+            from .playback import make_tmp_wav, play_wav
+            tmp = make_tmp_wav()
+            engine.synthesize("Hello! Marmalade T T S is ready.", tmp, speed=1.0)
+            play_wav(tmp)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            print("  ✓ Test passed!\n")
+        except Exception as e:
+            print(f"  ✗ Test failed: {e}", file=sys.stderr)
+            print("    You may need to install the engine first. See the hints above.\n",
+                  file=sys.stderr)
+
+    print("  🍊 Setup complete. Try: marmalade-tts \"Hello world\"\n")
+
+
+
 # ── Voice/model heuristic ───────────────────────────────────────────────────
 
 KOKORO_PREFIXES = (
@@ -181,12 +299,14 @@ def main():
     if argv and argv[0] == "daemon":
         cmd_daemon(argv[1:])
         return
+    if argv and argv[0] == "init":
+        cmd_init(argv[1:])
+        return
     if "--list-effects" in argv:
         config_tmp = cfg_mod.load()
         user_presets = config_tmp.get("effects", {}).get("presets", {})
         fx.list_effects(user_presets)
         return
-
     # ── If first token is not an engine name, inject default engine ──
     # This enables: marmalade-tts "hello" (uses defaults.engine)
     # and:          marmalade-tts --fast "hello"
