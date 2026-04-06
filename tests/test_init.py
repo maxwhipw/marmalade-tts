@@ -55,7 +55,7 @@ class TestNonInteractive:
 
     def test_all_engines(self):
         result = init_non_interactive(ENGINE_ORDER)
-        assert len(result) == 4
+        assert len(result) == 5
         for eng in ENGINE_ORDER:
             assert eng in result
             assert "daemon" in result[eng]
@@ -258,3 +258,32 @@ class TestConfigPreservation:
         with open(cfg_path) as f:
             cfg = yaml.safe_load(f)
         assert cfg["engines"]["kitten"]["model_size"] == "micro"
+
+
+# ── Pocket TTS engine ────────────────────────────────────────────────────────
+
+class TestPocketInit:
+    def test_pocket_default_voice(self):
+        result = init_non_interactive(["pocket"])
+        assert result["pocket"]["voice"] == "alba"
+
+    def test_pocket_override_voice(self):
+        result = init_non_interactive(
+            ["pocket"],
+            engine_options={"pocket": {"voice": "marius"}}
+        )
+        assert result["pocket"]["voice"] == "marius"
+
+    def test_pocket_invalid_voice_exits(self):
+        with pytest.raises(SystemExit):
+            init_non_interactive(
+                ["pocket"],
+                engine_options={"pocket": {"voice": "nonexistent"}}
+            )
+
+    def test_pocket_in_engine_order(self):
+        assert "pocket" in ENGINE_ORDER
+
+    def test_pocket_in_engine_info(self):
+        assert "pocket" in ENGINE_INFO
+        assert ENGINE_INFO["pocket"]["label"] == "Pocket TTS"

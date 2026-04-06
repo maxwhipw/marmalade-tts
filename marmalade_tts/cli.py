@@ -15,6 +15,7 @@ from .engines.kitten import KittenEngine, VOICES as KITTEN_VOICES
 from .engines.kokoro import KokoroEngine
 from .engines.piper import PiperEngine
 from .engines.coqui import CoquiEngine
+from .engines.pocket import PocketEngine, VOICES as POCKET_VOICES
 from . import effects as fx
 
 ENGINE_CLASSES = {
@@ -22,6 +23,7 @@ ENGINE_CLASSES = {
     "kokoro": KokoroEngine,
     "piper":  PiperEngine,
     "coqui":  CoquiEngine,
+    "pocket": PocketEngine,
 }
 
 ENGINE_NAMES = list(ENGINE_CLASSES.keys())
@@ -278,6 +280,8 @@ def looks_like_voice(engine: str, token: str) -> bool:
         return token.endswith(".onnx") or "/" in token or token.startswith("~")
     if engine == "coqui":
         return token.startswith("tts_models/")
+    if engine == "pocket":
+        return token in POCKET_VOICES or token.endswith(".wav") or token.endswith(".safetensors")
     return False
 
 

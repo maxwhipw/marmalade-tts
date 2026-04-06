@@ -47,9 +47,23 @@ ENGINE_INFO = {
         "default": False,
         "options": {},
     },
+    "pocket": {
+        "label": "Pocket TTS",
+        "desc":  "CPU-only, 100M params, ~200ms latency, voice cloning. English only.",
+        "size":  "~200 MB (model auto-downloads from HuggingFace)",
+        "default": False,
+        "options": {
+            "voice": {
+                "prompt": "Default voice",
+                "choices": ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"],
+                "default": "alba",
+                "help": "Built-in voices. You can also clone any voice from a .wav file.",
+            },
+        },
+    },
 }
 
-ENGINE_ORDER = ["kitten", "piper", "kokoro", "coqui"]
+ENGINE_ORDER = ["kitten", "piper", "kokoro", "coqui", "pocket"]
 
 # ── TUI helpers (stdlib only) ────────────────────────────────────────────────
 
@@ -232,6 +246,8 @@ def init_non_interactive(engines, engine_options=None):
             cfg.setdefault("model", "")
         elif eng == "coqui":
             cfg.setdefault("model", "")
+        elif eng == "pocket":
+            cfg.setdefault("voice", "alba")
 
         cfg.setdefault("daemon", False)
         cfg.setdefault("device", "cpu")
@@ -303,6 +319,8 @@ def init_interactive():
             cfg.setdefault("model", "")
         elif eng == "coqui":
             cfg.setdefault("model", "")
+        elif eng == "pocket":
+            cfg.setdefault("voice", "alba")
 
         cfg.setdefault("daemon", False)
         cfg.setdefault("device", "cpu")

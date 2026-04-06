@@ -50,6 +50,12 @@ engines:
     model: tts_models/en/ljspeech/tacotron2-DDC
     daemon: false
 
+  pocket:
+    device: cpu
+    voice: alba
+    # No daemon mode needed — Pocket TTS loads fast (~200ms)
+    # Voice cloning: set voice to a .wav file path or .safetensors export
+
 # Audio effects — requires sox (apt install sox)
 # Custom presets combine built-in effects. Use --list-effects to see all options.
 #
