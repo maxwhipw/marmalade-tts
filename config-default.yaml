@@ -1,9 +1,9 @@
 # marmalade-tts configuration
 # Edit directly or use: marmalade-tts config set <key> <value>
-# Full docs: see USAGE.md or marmalade-tts --list-effects
+# Full docs: see README.md or marmalade-tts --list-effects
 
 defaults:
-  engine: pocket
+  engine: kokoro
   device: cpu
   speed: 1.0
   play: true
@@ -15,16 +15,19 @@ presets:
     kokoro: af_heart
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
+    pocket: alba      # fast: default voice
   balanced:
     kitten: micro
     kokoro: af_heart
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
+    pocket: fantine   # balanced: alternate voice
   quality:
     kitten: mini
     kokoro: af_heart
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
+    pocket: cosette   # quality: another voice (pocket has no model-size variants)
 
 engines:
   kitten:

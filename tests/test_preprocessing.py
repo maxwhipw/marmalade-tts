@@ -228,7 +228,7 @@ class TestHashtag:
 
 class TestEngineProfiles:
     def test_all_engines_have_profiles(self):
-        for engine in ["kitten", "kokoro", "piper", "coqui"]:
+        for engine in ["kitten", "kokoro", "piper", "coqui", "pocket"]:
             assert engine in ENGINE_PROFILES
 
     def test_profiles_reference_valid_rules(self):
@@ -247,6 +247,26 @@ class TestEngineProfiles:
         result = preprocess("42", engine="kokoro")
         # 42 should remain as "42" since number rule is not in kokoro's profile
         assert "42" in result
+
+    def test_pocket_profile_exists(self):
+        assert "pocket" in ENGINE_PROFILES
+
+    def test_pocket_profile_has_all_rules(self):
+        # Pocket handles nothing natively, so it should get all rules like piper/kitten
+        pocket_rules = ENGINE_PROFILES["pocket"]
+        for rule in ["currency", "percentage", "ordinal", "time", "date",
+                     "email", "url", "filename", "abbreviation", "number",
+                     "math", "ampersand", "hashtag"]:
+            assert rule in pocket_rules, f"Pocket profile missing rule: {rule}"
+
+    def test_pocket_profile_applies_number_rule(self):
+        # Pocket should expand numbers (it handles nothing natively)
+        result = preprocess("42", engine="pocket")
+        assert "forty-two" in result
+
+    def test_pocket_profile_applies_currency_rule(self):
+        result = preprocess("$5", engine="pocket")
+        assert "dollars" in result
 
 
 # ── Composite: full pipeline ──────────────────────────────────────────────────

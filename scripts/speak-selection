@@ -69,7 +69,8 @@ fi
 
 # ── Speak ──────────────────────────────────────────────────────────────────
 
-exec "$MARMALADE_TTS" --quiet --no-play --out /tmp/marmalade-selection.wav \
-    "$TEXT" \
-    && aplay /tmp/marmalade-selection.wav 2>/dev/null \
-    || "$MARMALADE_TTS" --quiet "$TEXT"
+if "$MARMALADE_TTS" --quiet --no-play --out /tmp/marmalade-selection.wav "$TEXT"; then
+    aplay /tmp/marmalade-selection.wav 2>/dev/null
+else
+    "$MARMALADE_TTS" --quiet "$TEXT"
+fi

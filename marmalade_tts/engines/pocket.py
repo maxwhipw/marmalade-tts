@@ -11,6 +11,8 @@ Install:
 
 import os
 
+from . import Engine
+
 VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
 # Cache the model and voice states to avoid reloading on every call.
@@ -33,8 +35,10 @@ def _get_voice_state(model, voice: str):
     return _voice_states[voice]
 
 
-class PocketEngine:
+class PocketEngine(Engine):
     """Pocket TTS engine for marmalade-tts."""
+
+    name = "pocket"
 
     def __init__(self, cfg: dict):
         self.voice = cfg.get("voice", "alba")

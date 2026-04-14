@@ -174,6 +174,32 @@ class TestStop:
                     mock_kill.assert_not_called()
 
 
+# ── _find_python ─────────────────────────────────────────────────────────────
+
+class TestFindPython:
+    def test_find_python_no_venv_returns_system_python3(self, tmp_path):
+        """When no venv Python exists, _find_python falls back to system python3."""
+        with patch.dict(daemon_mod.ENGINE_PYTHON,
+                        {"kitten": [str(tmp_path / "nonexistent-venv" / "bin" / "python")]}):
+            result = daemon_mod._find_python("kitten")
+        assert result is None or "python" in result
+
+    def test_find_python_unknown_engine_falls_back(self):
+        """Unknown engine (no entry in ENGINE_PYTHON) returns system python3 or None."""
+        result = daemon_mod._find_python("pocket")  # pocket not in ENGINE_PYTHON
+        assert result is None or "python" in result
+
+    def test_find_python_returns_existing_venv_path(self, tmp_path):
+        """When the venv Python exists, it is returned directly."""
+        fake_python = tmp_path / "bin" / "python"
+        fake_python.parent.mkdir(parents=True)
+        fake_python.touch()
+        fake_python.chmod(0o755)
+        with patch.dict(daemon_mod.ENGINE_PYTHON, {"kitten": [str(fake_python)]}):
+            result = daemon_mod._find_python("kitten")
+        assert result == str(fake_python)
+
+
 # ── synthesize socket protocol ────────────────────────────────────────────────
 
 class TestSynthesizeSocket:

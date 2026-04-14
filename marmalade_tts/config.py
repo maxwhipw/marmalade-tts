@@ -14,9 +14,9 @@ DEFAULT_CONFIG = {
         "play": True,
     },
     "presets": {
-        "fast":     {"kitten": "nano",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC"},
-        "balanced": {"kitten": "micro", "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC"},
-        "quality":  {"kitten": "mini",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC"},
+        "fast":     {"kitten": "nano",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "alba"},
+        "balanced": {"kitten": "micro", "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "fantine"},
+        "quality":  {"kitten": "mini",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "cosette"},
     },
     "engines": {
         "kitten": {
@@ -40,6 +40,10 @@ DEFAULT_CONFIG = {
             "device": "cpu",
             "model": "tts_models/en/ljspeech/tacotron2-DDC",
             "daemon": False,
+        },
+        "pocket": {
+            "device": "cpu",
+            "voice": "alba",
         },
     },
 }

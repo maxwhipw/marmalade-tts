@@ -395,12 +395,6 @@ Examples:
     args, extra = parser.parse_known_args()
     positional = extra  # text + optional voice override
 
-    # ── List effects ──
-    if args.list_effects:
-        user_presets = config.get("effects", {}).get("presets", {})
-        fx.list_effects(user_presets)
-        return
-
     # ── List rules ──
     if args.list_rules:
         print("Available preprocessing rules:")
@@ -430,7 +424,7 @@ Examples:
         if preset_val:
             if engine_name == "kitten":
                 eng_cfg["model_size"] = preset_val
-            elif engine_name == "kokoro":
+            elif engine_name in ("kokoro", "pocket"):
                 eng_cfg["voice"] = preset_val
             else:
                 eng_cfg["model"] = preset_val

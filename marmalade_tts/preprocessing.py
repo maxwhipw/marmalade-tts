@@ -270,6 +270,12 @@ ENGINE_PROFILES = {
         "email", "url", "filename", "abbreviation",
         "math", "ampersand", "hashtag",
     ],
+    "pocket": [
+        # Pocket doesn't handle any text normalization natively
+        "currency", "percentage", "ordinal", "time", "date",
+        "email", "url", "filename", "abbreviation", "number",
+        "math", "ampersand", "hashtag",
+    ],
 }
 
 

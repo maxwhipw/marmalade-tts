@@ -1,5 +1,8 @@
 # 🍊 marmalade-tts
 
+<!-- LOGO PLACEHOLDER: When a mascot is available, add it here -->
+<!-- ![marmalade-tts mascot](assets/mascot.png) -->
+
 A unified command-line interface for local text-to-speech synthesis.
 Supports multiple engines with a single consistent interface — daemon mode for
 fast synthesis, per-engine text preprocessing, and optional audio effects via
@@ -348,6 +351,7 @@ presets:
     kokoro: af_heart
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
+    pocket: alba
   balanced:
     # ...same structure...
   quality:
@@ -376,6 +380,11 @@ engines:
     device: cpu
     model: tts_models/en/ljspeech/tacotron2-DDC
     daemon: false
+
+  pocket:
+    device: cpu
+    voice: alba         # built-in voice, or path to .wav / .safetensors
+    # No daemon needed — Pocket TTS loads fast (~200ms)
 
 effects:
   defaults:
@@ -493,6 +502,13 @@ marmalade-tts @script.txt --out script.wav
 - Python 3.10+
 - At least one supported TTS engine installed (see `INSTALL.md`)
 - `sox` — optional, required only for audio effects
+
+---
+
+## Contributing
+
+Want to add a new TTS engine? See **[ENGINE-GUIDE.md](ENGINE-GUIDE.md)** for a
+step-by-step walkthrough of every file that needs to be touched.
 
 ---
 

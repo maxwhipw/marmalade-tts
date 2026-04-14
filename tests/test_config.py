@@ -173,7 +173,7 @@ class TestEngineCfg:
 class TestDefaultConfig:
     def test_all_engines_present(self):
         cfg = cfg_mod.DEFAULT_CONFIG
-        for engine in ["kitten", "kokoro", "piper", "coqui"]:
+        for engine in ["kitten", "kokoro", "piper", "coqui", "pocket"]:
             assert engine in cfg["engines"], f"Missing engine: {engine}"
 
     def test_all_presets_present(self):
@@ -185,3 +185,21 @@ class TestDefaultConfig:
         cfg = cfg_mod.DEFAULT_CONFIG
         for key in ["engine", "device", "speed", "play"]:
             assert key in cfg["defaults"], f"Missing default: {key}"
+
+    def test_pocket_in_default_config(self):
+        cfg = cfg_mod.DEFAULT_CONFIG
+        assert "pocket" in cfg["engines"]
+        assert cfg["engines"]["pocket"]["voice"] == "alba"
+        assert cfg["engines"]["pocket"]["device"] == "cpu"
+
+    def test_pocket_engine_cfg_returns_defaults(self):
+        result = cfg_mod.engine_cfg(cfg_mod.DEFAULT_CONFIG, "pocket")
+        assert result["voice"] == "alba"
+        assert result["device"] == "cpu"
+
+    def test_pocket_in_presets(self):
+        cfg = cfg_mod.DEFAULT_CONFIG
+        for preset in ["fast", "balanced", "quality"]:
+            assert "pocket" in cfg["presets"][preset], (
+                f"pocket missing from {preset} preset"
+            )

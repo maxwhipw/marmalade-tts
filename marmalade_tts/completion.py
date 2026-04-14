@@ -3,13 +3,14 @@
 from .effects import EFFECTS, BUILTIN_PRESETS
 
 # Engine names and known voices for completion
-ENGINES = ["kitten", "kokoro", "piper", "coqui"]
+ENGINES = ["kitten", "kokoro", "piper", "coqui", "pocket"]
 KITTEN_VOICES = ["Bella", "Jasper", "Luna", "Bruno", "Rosie", "Hugo", "Kiki", "Leo"]
 KOKORO_VOICES = [
     "af_heart", "af_bella", "af_nicole", "am_adam", "am_michael",
     "bf_emma", "bf_isabella", "bm_george", "bm_lewis",
     "jf_alpha", "jf_gongitsune", "jm_kumo", "zf_xiaobei", "zm_yunjian",
 ]
+POCKET_VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 SUBCOMMANDS = ["config", "daemon"]
 CONFIG_ACTIONS = ["show", "get", "set"]
 DAEMON_ACTIONS = ["start", "stop", "status", "start-all", "stop-all"]

@@ -60,6 +60,30 @@ pipx install coqui-tts
 Note: Coqui 0.27.5 requires a patch for transformers compatibility.
 The install script handles this automatically.
 
+### Pocket TTS
+
+Pocket TTS runs in-process (no venv required if installed system-wide).
+For isolation, a venv is recommended:
+
+```bash
+# Option 1: system-wide (simple)
+pip install pocket-tts
+
+# Option 2: isolated venv (recommended)
+python3 -m venv ~/.local/share/pocket-tts-venv
+~/.local/share/pocket-tts-venv/bin/pip install pocket-tts
+```
+
+The model (~200MB) downloads automatically from HuggingFace on first use.
+Subsequent runs use the cache (`~/.cache/huggingface/hub/`).
+
+Voice cloning (optional): export a speaker voice from any `.wav` file:
+
+```bash
+pocket-tts export-voice my_voice.wav --out my_voice.safetensors
+marmalade-tts pocket "Hello" --voice my_voice.safetensors
+```
+
 ## marmalade-tts Installation
 
 ```bash

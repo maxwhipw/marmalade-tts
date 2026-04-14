@@ -15,12 +15,12 @@ an optional persistent daemon for instant-response engines.
     cli.py                          ← argparse, subcommands, tab completion
     config.py                       ← YAML config load/save/set/get
     engines/
-        __init__.py
-        base.py                     ← Engine base class
+        __init__.py                ← Engine base class
         kitten.py                   ← Kitten engine (daemon client + fallback)
         kokoro.py                   ← Kokoro engine (subprocess)
         piper.py                    ← Piper engine (subprocess)
         coqui.py                    ← Coqui engine (subprocess)
+        pocket.py                   ← Pocket TTS engine (in-process, CPU-only)
     daemon.py                       ← Daemon management (start/stop/status)
     playback.py                     ← WAV playback (paplay/aplay/ffplay)
     completion.py                   ← Shell tab-completion generation
@@ -46,7 +46,7 @@ an optional persistent daemon for instant-response engines.
 marmalade-tts [ENGINE] [VOICE] TEXT [OPTIONS]
 ```
 
-- `ENGINE` — optional, one of: `kitten`, `kokoro`, `piper`, `coqui`
+- `ENGINE` — optional, one of: `kitten`, `kokoro`, `piper`, `coqui`, `pocket`
   - If omitted, uses `defaults.engine` from config
 - `VOICE` — optional positional override for voice/model
   - Kitten: voice name (Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, Leo)
@@ -154,6 +154,11 @@ engines:
     device: cpu
     model: tts_models/en/ljspeech/tacotron2-DDC
     daemon: false
+
+  pocket:
+    device: cpu           # CPU-only (pocket-tts has no GPU support)
+    voice: alba            # built-in voice or path to .wav/.safetensors
+    # No daemon mode — Pocket TTS loads fast (~200ms)
 ```
 
 ## Engine Details
@@ -190,6 +195,18 @@ Subprocess call to `piper` CLI. Text fed via stdin. Speed is inverted
 
 Subprocess call to `tts` CLI (pipx venv, patched for transformers compat).
 Must set `CUDA_VISIBLE_DEVICES=""` when device=cpu.
+
+### Pocket
+
+Runs **in-process** (not a subprocess). The `pocket-tts` package is imported
+directly at synthesis time. The model loads in ~200ms, so no daemon is needed.
+
+Voice options:
+- Built-in names: `alba`, `marius`, `javert`, `jean`, `fantine`, `cosette`, `eponine`, `azelma`
+- Voice cloning: pass a `.wav` file path — the model extracts speaker embeddings on the fly
+- Faster cloning: export to `.safetensors` with `pocket-tts export-voice`
+
+Model weight (~200MB) is auto-downloaded from HuggingFace on first use.
 
 ## Environment Considerations
 

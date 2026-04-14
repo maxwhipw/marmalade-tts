@@ -77,6 +77,24 @@ class TestLooksLikeVoice:
     def test_coqui_plain_text(self):
         assert looks_like_voice("coqui", "hello world") is False
 
+    # Pocket
+    def test_pocket_builtin_voice(self):
+        assert looks_like_voice("pocket", "alba") is True
+
+    def test_pocket_wav_path(self):
+        assert looks_like_voice("pocket", "my_voice.wav") is True
+
+    def test_pocket_safetensors_path(self):
+        assert looks_like_voice("pocket", "speaker.safetensors") is True
+
+    def test_pocket_all_builtin_voices(self):
+        from marmalade_tts.engines.pocket import VOICES
+        for v in VOICES:
+            assert looks_like_voice("pocket", v)
+
+    def test_pocket_plain_text(self):
+        assert looks_like_voice("pocket", "hello world") is False
+
 
 # ── version ───────────────────────────────────────────────────────────────────
 
@@ -370,6 +388,164 @@ class TestSynthesizeRouting:
         captured = capsys.readouterr()
         assert "sox" in captured.err.lower()
         assert "skipped" in captured.err.lower() or "not installed" in captured.err.lower()
+
+
+# ── Voice positional argument parsing ──────────────────────────────────────────────
+
+class TestVoicePositional:
+    """marmalade-tts kitten Kiki 'hello' should pass voice='Kiki' to synthesize."""
+
+    def _run_with_voice(self, argv, engine_cls_name, engine_mock_cls):
+        fake_config = {
+            "defaults": {"engine": "kitten", "speed": 1.0, "play": False, "preprocessing": False},
+            "engines": {
+                "kitten": {"voice": "Kiki", "model_size": "micro", "daemon": False, "device": "cpu"},
+                "kokoro": {"voice": "af_heart", "lang": "a", "daemon": False, "device": "cpu"},
+                "pocket": {"voice": "alba", "device": "cpu"},
+            },
+            "presets": {},
+        }
+        mock_synth = MagicMock()
+        with patch("sys.argv", argv), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=fake_config), \
+             patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"), \
+             patch("marmalade_tts.cli.play_wav"), \
+             patch("marmalade_tts.cli.os.unlink"), \
+             patch("marmalade_tts.cli.os.path.exists", return_value=True), \
+             patch(f"marmalade_tts.cli.{engine_cls_name}") as MockEngine, \
+             patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {argv[1]: MockEngine}):
+            MockEngine.return_value.synthesize = mock_synth
+            main()
+        return mock_synth
+
+    def test_kitten_voice_positional(self):
+        mock_synth = self._run_with_voice(
+            ["marmalade-tts", "kitten", "Kiki", "hello world"],
+            "KittenEngine", MagicMock()
+        )
+        mock_synth.assert_called_once()
+        call_kwargs = mock_synth.call_args[1]
+        assert call_kwargs.get("voice") == "Kiki"
+
+    def test_kokoro_voice_positional(self):
+        mock_synth = self._run_with_voice(
+            ["marmalade-tts", "kokoro", "af_heart", "hello world"],
+            "KokoroEngine", MagicMock()
+        )
+        mock_synth.assert_called_once()
+        call_kwargs = mock_synth.call_args[1]
+        assert call_kwargs.get("voice") == "af_heart"
+
+    def test_pocket_voice_positional(self):
+        mock_synth = self._run_with_voice(
+            ["marmalade-tts", "pocket", "alba", "hello world"],
+            "PocketEngine", MagicMock()
+        )
+        mock_synth.assert_called_once()
+        call_kwargs = mock_synth.call_args[1]
+        assert call_kwargs.get("voice") == "alba"
+
+
+# ── Preset resolution ────────────────────────────────────────────────────────────────────
+
+class TestPresetResolution:
+    """--fast / --balanced / --quality should update engine config appropriately."""
+
+    def _run_preset(self, preset_flag, engine_name, expected_cfg_key, expected_cfg_val):
+        fake_config = {
+            "defaults": {"engine": engine_name, "speed": 1.0, "play": False, "preprocessing": False},
+            "engines": {
+                "kitten": {"voice": "Kiki", "model_size": "micro", "daemon": False, "device": "cpu"},
+                "kokoro": {"voice": "af_heart", "lang": "a", "daemon": False, "device": "cpu"},
+                "pocket": {"voice": "alba", "device": "cpu"},
+            },
+            "presets": {
+                "fast":     {"kitten": "nano",  "kokoro": "af_heart", "pocket": "alba"},
+                "balanced": {"kitten": "micro", "kokoro": "af_heart", "pocket": "fantine"},
+                "quality":  {"kitten": "mini",  "kokoro": "af_heart", "pocket": "cosette"},
+            },
+        }
+        received_cfg = {}
+
+        class FakeEngine:
+            def __init__(self, cfg):
+                received_cfg.update(cfg)
+            def synthesize(self, *a, **kw):
+                pass
+
+        with patch("sys.argv", ["marmalade-tts", engine_name, preset_flag, "hello"]), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=fake_config), \
+             patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"), \
+             patch("marmalade_tts.cli.play_wav"), \
+             patch("marmalade_tts.cli.os.unlink"), \
+             patch("marmalade_tts.cli.os.path.exists", return_value=True), \
+             patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {engine_name: FakeEngine}):
+            main()
+
+        assert received_cfg.get(expected_cfg_key) == expected_cfg_val, (
+            f"Expected {expected_cfg_key}={expected_cfg_val!r}, got {received_cfg}"
+        )
+
+    def test_kitten_fast_preset_sets_nano(self):
+        self._run_preset("--fast", "kitten", "model_size", "nano")
+
+    def test_kitten_quality_preset_sets_mini(self):
+        self._run_preset("--quality", "kitten", "model_size", "mini")
+
+    def test_pocket_fast_preset_sets_voice(self):
+        self._run_preset("--fast", "pocket", "voice", "alba")
+
+    def test_pocket_balanced_preset_sets_fantine(self):
+        self._run_preset("--balanced", "pocket", "voice", "fantine")
+
+
+# ── --out and passthrough flags ───────────────────────────────────────────────────────────
+
+class TestPassthroughFlags:
+    """--out, --lang, --speaker should be forwarded to synthesize."""
+
+    def _run(self, argv, config=None):
+        fake_config = config or {
+            "defaults": {"engine": "kokoro", "speed": 1.0, "play": False, "preprocessing": False},
+            "engines": {
+                "kokoro": {"voice": "af_heart", "lang": "a", "daemon": False, "device": "cpu"},
+                "piper":  {"model": "/dev/null", "daemon": False, "device": "cpu"},
+            },
+            "presets": {},
+        }
+        received = {}
+
+        class FakeEngine:
+            def __init__(self, cfg):
+                pass
+            def synthesize(self, text, out_path, **kwargs):
+                received["text"] = text
+                received["out_path"] = out_path
+                received["kwargs"] = kwargs
+
+        engine_name = argv[1] if argv[1] in ("kokoro", "piper") else "kokoro"
+        with patch("sys.argv", argv), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=fake_config), \
+             patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/auto.wav"), \
+             patch("marmalade_tts.cli.play_wav"), \
+             patch("marmalade_tts.cli.os.unlink"), \
+             patch("marmalade_tts.cli.os.path.exists", return_value=True), \
+             patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {engine_name: FakeEngine}):
+            main()
+
+        return received
+
+    def test_out_flag_sets_output_path(self):
+        received = self._run(["marmalade-tts", "kokoro", "hello", "--out", "/tmp/custom.wav"])
+        assert received["out_path"] == "/tmp/custom.wav"
+
+    def test_lang_passthrough_for_kokoro(self):
+        received = self._run(["marmalade-tts", "kokoro", "hello", "--lang", "b"])
+        assert received["kwargs"].get("lang") == "b"
+
+    def test_speaker_passthrough_for_piper(self):
+        received = self._run(["marmalade-tts", "piper", "hello", "--speaker", "2"])
+        assert received["kwargs"].get("speaker") == "2"
 
 
 # ── Scripting / agent flags ───────────────────────────────────────────────────
