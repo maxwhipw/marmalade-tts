@@ -540,6 +540,26 @@ step-by-step walkthrough of every file that needs to be touched.
 
 ---
 
+## Credits & Acknowledgements
+
+marmalade-tts is a unified wrapper — the real work is done by these engines:
+
+- **[Piper](https://github.com/rhasspy/piper)** — ONNX neural TTS by Michael Hansen / Rhasspy (MIT)
+- **[Kokoro](https://github.com/hexgrad/kokoro)** — high-quality multilingual TTS by Hexgrad (Apache 2.0)
+- **[KittenTTS](https://github.com/KittenML/KittenTTS)** — fast lightweight neural TTS by KittenML (Apache 2.0)
+- **[Coqui TTS](https://github.com/coqui-ai/TTS)** — open-source TTS toolkit by Coqui AI (MPL 2.0)
+- **[Pocket TTS](https://github.com/kyutai-labs/pocket-tts)** — CPU-only 100M param TTS with voice cloning by Kyutai Labs (MIT)
+- **[sox](https://sox.sourceforge.net/)** — audio effects processing (GPL)
+- **[num2words](https://github.com/savoirfairelinux/num2words)** — number-to-words conversion (LGPL)
+
+The Docker HTTP API server implements endpoints compatible with the
+[OpenAI TTS API](https://platform.openai.com/docs/api-reference/audio/createSpeech)
+and [ElevenLabs TTS API](https://elevenlabs.io/docs/api-reference/text-to-speech)
+interfaces. No code from either project is used — the server is written from
+scratch using Python's standard library.
+
+---
+
 ## License
 
 MIT — see `LICENSE`.
