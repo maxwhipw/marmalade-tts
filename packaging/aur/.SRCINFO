@@ -1,0 +1,18 @@
+pkgbase = marmalade-tts
+	pkgdesc = Unified local TTS CLI — kitten | kokoro | piper | coqui | pocket
+	pkgver = 0.4.0
+	pkgrel = 1
+	url = http://george:3000/marmalade/marmalade-tts-cli
+	arch = any
+	license = MIT
+	depends = python
+	depends = python-yaml
+	depends = python-num2words
+	optdepends = sox: audio effects support
+	optdepends = python-kittentts: Kitten TTS engine
+	optdepends = kokoro: Kokoro TTS engine
+	optdepends = piper-tts: Piper TTS engine
+	source = marmalade-tts-0.4.0.tar.gz::http://george:3000/marmalade/marmalade-tts-cli/archive/v0.4.0.tar.gz
+	sha256sums = SKIP
+
+pkgname = marmalade-tts

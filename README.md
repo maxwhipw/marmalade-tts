@@ -10,6 +10,47 @@ fast synthesis, per-engine text preprocessing, and optional audio effects via
 
 ---
 
+## Installation
+
+### pipx (recommended for most users)
+
+```sh
+pipx install marmalade-tts
+marmalade-tts init
+```
+
+### deb / rpm (system-wide install)
+
+Download the latest `.deb` or `.rpm` from the [Forgejo releases page](http://george:3000/marmalade/marmalade-tts-cli/releases), then:
+
+```sh
+# Debian/Ubuntu
+sudo dpkg -i marmalade-tts_0.4.0_amd64.deb
+
+# Fedora/RHEL
+sudo rpm -i marmalade-tts-0.4.0-1.x86_64.rpm
+```
+
+### AUR (Arch Linux)
+
+```sh
+yay -S marmalade-tts
+# or: paru -S marmalade-tts
+```
+
+### Manual (git clone)
+
+```sh
+git clone http://george:3000/marmalade/marmalade-tts-cli
+cd marmalade-tts-cli
+./install.sh
+marmalade-tts init
+```
+
+See `INSTALL.md` for per-engine dependencies (pip packages, models).
+
+---
+
 ## Engines
 
 | Engine | What it is | Daemon mode |
@@ -20,19 +61,6 @@ fast synthesis, per-engine text preprocessing, and optional audio effects via
 | **coqui** | Open-source neural TTS toolkit | optional |
 
 Install the engines you want — marmalade-tts works with whichever are present.
-
----
-
-## Installation
-
-```sh
-git clone <repo-url>
-cd marmalade-tts-cli
-./install.sh
-marmalade-tts init          # interactive setup wizard
-```
-
-Then follow `INSTALL.md` for per-engine dependencies (pip packages, models).
 
 ---
 
