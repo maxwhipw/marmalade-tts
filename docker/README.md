@@ -268,3 +268,10 @@ logs:
 ```bash
 docker compose -f docker/docker-compose.yml logs | grep -A3 "API KEY"
 ```
+
+---
+
+While this server uses the OpenAI and ElevenLabs API interfaces for
+compatibility, no code from either project is used — it is written from scratch
+using Python's standard library. This project is not affiliated with or endorsed
+by OpenAI or ElevenLabs.

@@ -555,8 +555,10 @@ marmalade-tts is a unified wrapper — the real work is done by these engines:
 The Docker HTTP API server implements endpoints compatible with the
 [OpenAI TTS API](https://platform.openai.com/docs/api-reference/audio/createSpeech)
 and [ElevenLabs TTS API](https://elevenlabs.io/docs/api-reference/text-to-speech)
-interfaces. No code from either project is used — the server is written from
-scratch using Python's standard library.
+interfaces. While we use their API interface for compatibility, no code from
+either project is used — the server is written from scratch using Python's
+standard library. This project is not affiliated with or endorsed by OpenAI or
+ElevenLabs.
 
 ---
 
