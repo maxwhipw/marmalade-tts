@@ -223,7 +223,17 @@ def apply_effects(in_path: str, out_path: str, effect_specs: list[str], config: 
             err = proc.stderr.decode().strip()
             raise RuntimeError(f"sox failed:\n{err}")
         if same_file:
-            os.replace(tmp_path, out_path)
+            # shutil.move (not os.replace) — handles cross-filesystem moves
+            # (e.g. tmpfs /tmp → ext4 home dir, which os.replace can't do).
+            shutil.move(tmp_path, out_path)
+            # tempfile.mkstemp creates with 0600; restore the user's default umask
+            # so the final output is readable like any other file they create.
+            try:
+                umask = os.umask(0)
+                os.umask(umask)
+                os.chmod(out_path, 0o666 & ~umask)
+            except OSError:
+                pass
     except Exception:
         if same_file and os.path.exists(tmp_path):
             try:
