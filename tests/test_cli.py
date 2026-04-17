@@ -99,7 +99,9 @@ class TestLooksLikeVoice:
 # ── version ───────────────────────────────────────────────────────────────────
 
 def test_version_string():
-    assert __version__ == "0.4.0"
+    # Match semver-ish (e.g. 0.4.2, 1.0.0-rc1) so we don't have to update tests on every bump
+    import re
+    assert re.match(r"^\d+\.\d+\.\d+", __version__), f"Bad version: {__version__!r}"
 
 
 def test_version_flag(capsys):
@@ -108,7 +110,7 @@ def test_version_flag(capsys):
             main()
     assert exc.value.code == 0
     captured = capsys.readouterr()
-    assert "0.4.0" in captured.out
+    assert __version__ in captured.out
 
 
 # ── --list-effects ────────────────────────────────────────────────────────────

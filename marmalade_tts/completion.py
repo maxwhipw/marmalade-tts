@@ -11,7 +11,7 @@ KOKORO_VOICES = [
     "jf_alpha", "jf_gongitsune", "jm_kumo", "zf_xiaobei", "zm_yunjian",
 ]
 POCKET_VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
-SUBCOMMANDS = ["config", "daemon"]
+SUBCOMMANDS = ["config", "daemon", "init"]
 CONFIG_ACTIONS = ["show", "get", "set"]
 DAEMON_ACTIONS = ["start", "stop", "status", "start-all", "stop-all"]
 CONFIG_PATHS = [
@@ -23,9 +23,13 @@ CONFIG_PATHS = [
     "engines.kokoro.daemon",
     "engines.piper.model", "engines.piper.device", "engines.piper.daemon",
     "engines.coqui.model", "engines.coqui.device", "engines.coqui.daemon",
-    "presets.fast.kitten", "presets.fast.kokoro",
-    "presets.balanced.kitten", "presets.balanced.kokoro",
-    "presets.quality.kitten", "presets.quality.kokoro",
+    "engines.pocket.voice", "engines.pocket.device",
+    "presets.fast.kitten", "presets.fast.kokoro", "presets.fast.piper",
+    "presets.fast.coqui", "presets.fast.pocket",
+    "presets.balanced.kitten", "presets.balanced.kokoro", "presets.balanced.piper",
+    "presets.balanced.coqui", "presets.balanced.pocket",
+    "presets.quality.kitten", "presets.quality.kokoro", "presets.quality.piper",
+    "presets.quality.coqui", "presets.quality.pocket",
 ]
 EFFECT_NAMES = list(EFFECTS.keys()) + list(BUILTIN_PRESETS.keys())
 
@@ -34,6 +38,7 @@ def bash_completion() -> str:
     engines = " ".join(ENGINES)
     kitten_voices = " ".join(KITTEN_VOICES)
     kokoro_voices = " ".join(KOKORO_VOICES)
+    pocket_voices = " ".join(POCKET_VOICES)
     subcommands = " ".join(SUBCOMMANDS)
     config_actions = " ".join(CONFIG_ACTIONS)
     daemon_actions = " ".join(DAEMON_ACTIONS)
@@ -51,13 +56,16 @@ _marmalade_tts() {{
     local subcommands="{subcommands}"
     local kitten_voices="{kitten_voices}"
     local kokoro_voices="{kokoro_voices}"
+    local pocket_voices="{pocket_voices}"
     local config_actions="{config_actions}"
     local daemon_actions="{daemon_actions}"
     local config_paths="{config_paths}"
     local effect_names="{effect_names}"
-    local flags="--out --play --speed --voice --lang --speaker --fast --balanced --quality \\
+    local flags="--out --play --no-play --speed --voice --lang --speaker \\
+                 --fast --balanced --quality \\
                  --effect --list-effects --list --preprocessing --no-preprocessing \\
-                 --list-rules --completion"
+                 --list-rules --completion --quiet --json --print-path \\
+                 --stdin --text -t --version --engine"
 
     # First positional: engine or subcommand
     if [[ $cword -eq 1 ]]; then
@@ -90,6 +98,7 @@ _marmalade_tts() {{
         case "${{words[1]}}" in
             kitten) COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
             kokoro) COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
+            pocket) COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
             *)      COMPREPLY=( $(compgen -W "$flags" -- "$cur") ) ;;
         esac
         return
@@ -106,6 +115,7 @@ _marmalade_tts() {{
         case "${{words[1]}}" in
             kitten) COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
             kokoro) COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
+            pocket) COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
         esac
         return
     fi
@@ -137,6 +147,7 @@ def zsh_completion() -> str:
     engines = " ".join(ENGINES)
     kitten_voices = " ".join(KITTEN_VOICES)
     kokoro_voices = " ".join(KOKORO_VOICES)
+    pocket_voices = " ".join(POCKET_VOICES)
     effect_names = " ".join(EFFECT_NAMES)
 
     return f'''#compdef marmalade-tts
@@ -145,9 +156,10 @@ def zsh_completion() -> str:
 
 _marmalade-tts() {{
     local -a engines=({engines})
-    local -a subcommands=(config daemon)
+    local -a subcommands=(config daemon init)
     local -a kitten_voices=({kitten_voices})
     local -a kokoro_voices=({kokoro_voices})
+    local -a pocket_voices=({pocket_voices})
     local -a effect_names=({effect_names})
     local -a daemon_actions=(start stop status start-all stop-all)
 
@@ -157,8 +169,14 @@ _marmalade-tts() {{
         '*:text:' \\
         '--out[Output WAV file]:file:_files' \\
         '--play[Force playback]' \\
+        '--no-play[Skip playback]' \\
+        '--quiet[Suppress non-audio output]' \\
+        '--json[Emit JSON status to stdout]' \\
+        '--print-path[Print output path]' \\
+        '--stdin[Read text from stdin]' \\
+        '(-t --text)'{{-t,--text}}'[Text to synthesize]:text:' \\
         '--speed[Speech speed]:speed:' \\
-        '--voice[Voice name]:voice:((${{kitten_voices}} ${{kokoro_voices}}))' \\
+        '--voice[Voice name]:voice:((${{kitten_voices}} ${{kokoro_voices}} ${{pocket_voices}}))' \\
         '--lang[Language code]:lang:(a b h e f i p j z)' \\
         '--speaker[Speaker ID]:id:' \\
         '--fast[Fast preset]' \\
@@ -170,6 +188,7 @@ _marmalade-tts() {{
         '--preprocessing[Enable text preprocessing]' \\
         '--no-preprocessing[Disable text preprocessing]' \\
         '--list-rules[List preprocessing rules]' \\
+        '--version[Print version]' \\
         '--completion[Generate completion]:shell:(bash zsh)'
 }}
 

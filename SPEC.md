@@ -210,8 +210,9 @@ Model weight (~200MB) is auto-downloaded from HuggingFace on first use.
 
 ## Environment Considerations
 
-- **GPU:** GTX 1060 Max-Q (Pascal, sm_61) — not compatible with modern torch CUDA.
-  All engines default to CPU. The `device: cuda` option exists for future GPUs.
+- **GPU:** Older or unsupported CUDA GPUs may not be compatible with current torch.
+  All engines default to CPU. The `device: cuda` option exists for systems with
+  modern, compatible GPUs.
 - **HuggingFace cache:** Models cached in `~/.cache/huggingface/hub/`. First run
   downloads; subsequent runs use cache. `HF_HUB_OFFLINE=1` prevents re-checking.
 - **Python:** System Python 3.12. Each engine lives in its own venv (pipx or manual).

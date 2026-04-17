@@ -70,9 +70,10 @@ class TestCLISmoke:
         )
 
     def test_version(self):
+        from marmalade_tts import __version__
         r = self._cli(["--version"])
         assert r.returncode == 0
-        assert "0.4.0" in r.stdout
+        assert __version__ in r.stdout
 
     def test_list_effects(self):
         r = self._cli(["--list-effects"])

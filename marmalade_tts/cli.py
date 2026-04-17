@@ -317,20 +317,22 @@ def main():
     first_is_engine = argv and argv[0] in ENGINE_NAMES
     if not first_is_engine and argv:
         config_tmp = cfg_mod.load()
-        default_eng = config_tmp.get("defaults", {}).get("engine", "kitten")
+        default_eng = config_tmp.get("defaults", {}).get("engine", "kokoro")
         argv.insert(0, default_eng)
         sys.argv = [sys.argv[0]] + argv
 
     # ── Parse ──
     parser = argparse.ArgumentParser(
         prog="marmalade-tts",
-        description="🍊 Unified local TTS — kitten | kokoro | piper | coqui",
+        description="🍊 Unified local TTS — kitten | kokoro | piper | coqui | pocket",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
   marmalade-tts "Hello world"                    # uses default engine
   marmalade-tts kokoro "Hello world"             # specify engine
   marmalade-tts kitten Kiki "Hello from Kiki"    # specify engine + voice
+  marmalade-tts pocket alba "Voice cloning ready"   # pocket engine + voice
+  marmalade-tts pocket my_voice.wav "Cloned voice"  # pocket voice cloning
   marmalade-tts --fast "Quick test"              # fast preset
   marmalade-tts --no-preprocessing "$100 test"   # skip text normalization
   marmalade-tts config set defaults.engine kitten
@@ -414,7 +416,7 @@ Examples:
         preset_name = "quality"
 
     # ── Resolve engine ──
-    engine_name = args.engine or config.get("defaults", {}).get("engine", "kitten")
+    engine_name = args.engine or config.get("defaults", {}).get("engine", "kokoro")
 
     # ── Apply preset to engine config ──
     eng_cfg = cfg_mod.engine_cfg(config, engine_name)

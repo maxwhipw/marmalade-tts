@@ -55,12 +55,14 @@ See `INSTALL.md` for per-engine dependencies (pip packages, models).
 
 | Engine | What it is | Daemon mode |
 |--------|-----------|-------------|
-| **kokoro** | High-quality neural TTS (default) | optional |
+| **kokoro** | High-quality multilingual neural TTS (default) | optional |
 | **kitten** | Fast lightweight neural TTS | ✔ recommended |
 | **piper** | Offline neural TTS, many voices | optional |
 | **coqui** | Open-source neural TTS toolkit | optional |
+| **pocket** | CPU-only 100M-param TTS with voice cloning | n/a (loads in ~200 ms) |
 
 Install the engines you want — marmalade-tts works with whichever are present.
+(There's no need to install all five — even just one engine is enough to be useful.)
 
 ---
 

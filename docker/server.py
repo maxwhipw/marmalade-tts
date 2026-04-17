@@ -16,7 +16,7 @@ Security:
   - Requests logged without bodies (no sensitive text in logs)
 
 Endpoints:
-  GET  /health                    → {"status": "ok", "version": "0.4.0"}
+  GET  /health                    → {"status": "ok", "version": "<package-version>"}
   GET  /v1/voices                 → voice list (ElevenLabs-style)
   POST /v1/audio/speech           → OpenAI TTS-compatible
   POST /v1/text-to-speech/{voice} → ElevenLabs-compatible
@@ -37,7 +37,11 @@ from pathlib import Path
 from socketserver import ThreadingMixIn
 
 # ── Version ────────────────────────────────────────────────────────────────────
-VERSION = "0.4.0"
+# Import from the package so we have a single source of truth (no drift).
+try:
+    from marmalade_tts import __version__ as VERSION
+except ImportError:
+    VERSION = "unknown"
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(

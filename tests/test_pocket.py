@@ -83,15 +83,25 @@ class TestListVoices:
 
 # ── synthesize (mocked pocket_tts) ───────────────────────────────────────────
 
+# Synthesize tests need numpy because pocket's mocked audio array is
+# generated with np.zeros. The structural / VOICES / list_voices tests above
+# don't need numpy and should always run.
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    np = None  # noqa: F811
+
+
+@pytest.mark.skipif(not HAS_NUMPY, reason="numpy not installed")
 class TestPocketSynthesize:
     def _make_mock_pocket_tts(self, audio_data=None):
         """Build a mock pocket_tts module."""
-        import numpy as np
-
         mock_model = MagicMock()
         mock_model.sample_rate = 22050
         if audio_data is None:
-            # Small silent audio array
+            # Small silent audio array (numpy is guaranteed by importorskip above)
             audio_data = MagicMock()
             audio_data.numpy.return_value = np.zeros(100, dtype="float32")
         mock_model.generate_audio.return_value = audio_data
