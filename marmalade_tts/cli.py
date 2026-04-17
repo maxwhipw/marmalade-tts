@@ -317,7 +317,7 @@ def main():
     first_is_engine = argv and argv[0] in ENGINE_NAMES
     if not first_is_engine and argv:
         config_tmp = cfg_mod.load()
-        default_eng = config_tmp.get("defaults", {}).get("engine", "kokoro")
+        default_eng = config_tmp.get("defaults", {}).get("engine", "kitten")
         argv.insert(0, default_eng)
         sys.argv = [sys.argv[0]] + argv
 
@@ -416,7 +416,7 @@ Examples:
         preset_name = "quality"
 
     # ── Resolve engine ──
-    engine_name = args.engine or config.get("defaults", {}).get("engine", "kokoro")
+    engine_name = args.engine or config.get("defaults", {}).get("engine", "kitten")
 
     # ── Apply preset to engine config ──
     eng_cfg = cfg_mod.engine_cfg(config, engine_name)

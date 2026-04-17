@@ -55,8 +55,8 @@ See `INSTALL.md` for per-engine dependencies (pip packages, models).
 
 | Engine | What it is | Daemon mode |
 |--------|-----------|-------------|
-| **kokoro** | High-quality multilingual neural TTS (default) | optional |
-| **kitten** | Fast lightweight neural TTS | ✔ recommended |
+| **kitten** | Fast lightweight neural TTS (default) | ✔ recommended |
+| **kokoro** | High-quality multilingual neural TTS | optional |
 | **piper** | Offline neural TTS, many voices | optional |
 | **coqui** | Open-source neural TTS toolkit | optional |
 | **pocket** | CPU-only 100M-param TTS with voice cloning | n/a (loads in ~200 ms) |

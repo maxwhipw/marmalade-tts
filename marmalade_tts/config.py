@@ -8,7 +8,7 @@ CONFIG_PATH = os.path.expanduser("~/.config/marmalade-tts/config.yaml")
 # ── Default config (used when no file exists) ──────────────────────────────────
 DEFAULT_CONFIG = {
     "defaults": {
-        "engine": "kokoro",
+        "engine": "kitten",
         "device": "cpu",
         "speed": 1.0,
         "play": True,

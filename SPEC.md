@@ -103,7 +103,7 @@ config dot-paths, and preset names.
 
 ```yaml
 defaults:
-  engine: kokoro          # default engine when none specified
+  engine: kitten          # default engine when none specified
   device: cpu             # global default: cpu | cuda | auto
   speed: 1.0              # global default speed
   play: true              # auto-play when no --out given

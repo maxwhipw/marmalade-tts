@@ -3,7 +3,7 @@
 # Full docs: see README.md or marmalade-tts --list-effects
 
 defaults:
-  engine: kokoro
+  engine: kitten
   device: cpu
   speed: 1.0
   play: true
