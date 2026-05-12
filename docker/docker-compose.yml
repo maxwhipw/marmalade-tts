@@ -1,0 +1,37 @@
+services:
+  marmalade-tts:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "127.0.0.1:8880:8880"  # loopback only — do NOT expose to 0.0.0.0 in production
+    environment:
+      - MARMALADE_API_KEY=${MARMALADE_API_KEY:-}  # auto-generates random key if empty
+      - MARMALADE_CORS_ORIGIN=
+      - MARMALADE_MAX_TEXT_LENGTH=5000
+      - MARMALADE_RATE_LIMIT=10
+      - MARMALADE_PORT=8880
+    volumes:
+      - voices:/voices:ro               # additional voice models
+      # Uncomment to override config:
+      # - ./config.yaml:/app/config.yaml:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777        # temp WAV files during synthesis
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  voices:
+    # Named volume for piper voice models.
+    # To pre-populate: docker run --rm -v marmalade-tts_voices:/voices alpine \
+    #   wget -P /voices https://huggingface.co/.../en_US-lessac-medium.onnx

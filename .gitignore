@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
+coverage.xml
+
+# Virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# Builds & dists
+dist/
+build/
+*.deb
+*.rpm
+*.tar.gz
+*.whl
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.~lock.*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Audio artifacts (don't commit stray generated speech)
+*.wav
+*.mp3
+*.ogg
+*.flac
+# But keep curated demos under samples/ or demos/
+!samples/**/*.wav
+!demos/**/*.wav
+
+# AUR build dirs
+packaging/aur/src/
+packaging/aur/pkg/

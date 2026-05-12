@@ -1,0 +1,14 @@
+[Unit]
+Description=Marmalade TTS — Piper voice daemon (kept in RAM)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/pipx/venvs/piper-tts/bin/python \
+    %h/.local/share/marmalade-tts/daemon/piper-daemon.py
+Restart=on-failure
+RestartSec=5
+Environment=PIPER_MODEL=%h/.local/share/piper/voices/en_US-lessac-medium.onnx
+
+[Install]
+WantedBy=default.target

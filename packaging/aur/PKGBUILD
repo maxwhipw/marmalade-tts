@@ -1,0 +1,52 @@
+# Maintainer: marmalade-tts contributors
+pkgname=marmalade-tts
+pkgver=0.4.3
+pkgrel=1
+pkgdesc="Unified local TTS CLI — kitten | kokoro | piper | coqui | pocket"
+arch=('any')
+url="https://github.com/maxwhipw/marmalade-tts"
+license=('MIT')
+depends=('python' 'python-yaml' 'python-num2words')
+optdepends=(
+    'sox: audio effects support'
+    'kokoro: Kokoro TTS engine (install via pip/venv per upstream)'
+    'piper-tts: Piper TTS engine'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Python package
+    install -dm755 "$pkgdir/usr/lib/marmalade-tts"
+    cp -r marmalade_tts "$pkgdir/usr/lib/marmalade-tts/"
+
+    # CLI entrypoint
+    install -Dm755 marmalade-tts "$pkgdir/usr/bin/marmalade-tts"
+
+    # Default config
+    install -Dm644 config-default.yaml "$pkgdir/usr/share/marmalade-tts/config-default.yaml"
+
+    # Daemon scripts
+    install -dm755 "$pkgdir/usr/share/marmalade-tts/daemon"
+    install -Dm644 daemon/*-daemon.py daemon/_common.py "$pkgdir/usr/share/marmalade-tts/daemon/"
+
+    # Systemd user services — rewrite daemon script path from the user-install
+    # default (%h/.local/share/marmalade-tts/daemon) to the system-install
+    # path (/usr/share/marmalade-tts/daemon) so the units work out of the box.
+    install -dm755 "$pkgdir/usr/lib/systemd/user"
+    for svc in systemd/marmalade-*.service; do
+        sed 's|%h/\.local/share/marmalade-tts/daemon|/usr/share/marmalade-tts/daemon|' \
+            "$svc" > "$pkgdir/usr/lib/systemd/user/$(basename $svc)"
+        chmod 644 "$pkgdir/usr/lib/systemd/user/$(basename $svc)"
+    done
+
+    # Helper scripts
+    install -dm755 "$pkgdir/usr/share/marmalade-tts/scripts"
+    install -Dm755 scripts/speak-selection scripts/speak-clipboard scripts/marmalade-pipe \
+        "$pkgdir/usr/share/marmalade-tts/scripts/"
+
+    # License
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

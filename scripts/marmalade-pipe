@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# marmalade-tts-pipe — a thin wrapper for piping text in shell pipelines
+#
+# Usage:
+#   echo "Hello world" | marmalade-pipe
+#   cat article.txt | marmalade-pipe --effect robot
+#   cat notes.txt | marmalade-pipe --out spoken.wav
+#   cat README.md | marmalade-pipe --quiet --out out.wav && aplay out.wav
+#
+# All marmalade-tts flags are passed through. Text always comes from stdin.
+# Install: copy to ~/.local/bin/marmalade-pipe and chmod +x
+
+exec marmalade-tts --stdin --no-play "$@"

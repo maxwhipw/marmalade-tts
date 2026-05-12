@@ -1,0 +1,14 @@
+[Unit]
+Description=Marmalade TTS — Kitten model daemon (kept in RAM for instant synthesis)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/kittentts-venv/bin/python \
+    %h/.local/share/marmalade-tts/daemon/kitten-daemon.py
+Restart=on-failure
+RestartSec=5
+Environment=KITTEN_MODEL=nano
+
+[Install]
+WantedBy=default.target

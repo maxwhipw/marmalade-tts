@@ -1,0 +1,77 @@
+# marmalade-tts configuration
+# Edit directly or use: marmalade-tts config set <key> <value>
+# Full docs: see README.md or marmalade-tts --list-effects
+
+defaults:
+  engine: kitten
+  device: cpu
+  speed: 1.0
+  play: true
+  preprocessing: true    # text normalization ($100 → 100 dollars, etc.)
+
+presets:
+  fast:
+    kitten: nano
+    kokoro: af_heart
+    piper: en_US-lessac-medium
+    coqui: tts_models/en/ljspeech/tacotron2-DDC
+    pocket: alba      # fast: default voice
+  balanced:
+    kitten: micro
+    kokoro: af_heart
+    piper: en_US-lessac-medium
+    coqui: tts_models/en/ljspeech/tacotron2-DDC
+    pocket: fantine   # balanced: alternate voice
+  quality:
+    kitten: mini
+    kokoro: af_heart
+    piper: en_US-lessac-medium
+    coqui: tts_models/en/ljspeech/tacotron2-DDC
+    pocket: cosette   # quality: another voice (pocket has no model-size variants)
+
+engines:
+  kitten:
+    device: cpu
+    model_size: micro
+    voice: Kiki
+    daemon: true           # keep model in RAM for instant synthesis
+    # preprocessing: true  # or a list of rules: [currency, number, filename]
+
+  kokoro:
+    device: cpu
+    voice: af_heart
+    lang: a
+    daemon: false          # set true to keep kokoro model in RAM (uses ~1.4 GB)
+
+  piper:
+    device: cpu
+    model: ~/.local/share/piper/voices/en_US-lessac-medium.onnx
+    daemon: false
+
+  coqui:
+    device: cpu
+    model: tts_models/en/ljspeech/tacotron2-DDC
+    daemon: false
+
+  pocket:
+    device: cpu
+    voice: alba
+    # No daemon mode needed — Pocket TTS loads fast (~200ms)
+    # Voice cloning: set voice to a .wav file path or .safetensors export
+
+# Audio effects — requires sox (apt install sox)
+# Custom presets combine built-in effects. Use --list-effects to see all options.
+#
+# Per-engine default effects are applied whenever that engine is used,
+# unless overridden on the command line with --effect.
+# Set to [] to disable defaults for a specific engine.
+#
+# effects:
+#   presets:
+#     my_voice:   ["pitch=-100", "reverb=30"]
+#     dramatic:   ["reverb=70", "bass=4", "echo=0.8:0.6:80:0.3"]
+#   defaults:
+#     kitten:   ["reverb=20"]      # subtle warmth on kitten by default
+#     kokoro:   []                 # no default effects
+#     piper:    []
+#     coqui:    []

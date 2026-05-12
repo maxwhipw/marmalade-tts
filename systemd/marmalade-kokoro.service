@@ -1,0 +1,14 @@
+[Unit]
+Description=Marmalade TTS — Kokoro model daemon (kept in RAM)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/pipx/venvs/kokoro/bin/python \
+    %h/.local/share/marmalade-tts/daemon/kokoro-daemon.py
+Restart=on-failure
+RestartSec=5
+Environment=KOKORO_LANG=a
+
+[Install]
+WantedBy=default.target
