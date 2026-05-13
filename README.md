@@ -51,12 +51,16 @@ sudo dpkg -i marmalade-tts_0.4.3_amd64.deb
 sudo rpm -i marmalade-tts-0.4.3-1.x86_64.rpm
 ```
 
-### AUR (Arch Linux)
+### AUR (Arch Linux) — coming soon
 
 ```sh
 yay -S marmalade-tts
 # or: paru -S marmalade-tts
 ```
+
+The `packaging/aur/PKGBUILD` is in the repo and Arch users can build
+from a clone (`makepkg -si`). Submission to the official AUR is on the
+roadmap.
 
 ### Manual (git clone)
 
@@ -75,7 +79,7 @@ See `INSTALL.md` for per-engine dependencies (pip packages, models).
 
 | Engine | What it is | Daemon mode |
 |--------|-----------|-------------|
-| **kitten** | Fast lightweight neural TTS (default) | ✔ recommended |
+| **kitten** | Fast lightweight neural TTS (default) | ✔ enabled by default |
 | **kokoro** | High-quality multilingual neural TTS | optional |
 | **piper** | Offline neural TTS, many voices | optional |
 | **coqui** | Open-source neural TTS toolkit | optional |
