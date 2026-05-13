@@ -39,9 +39,6 @@ pipx install marmalade-tts
 marmalade-tts init
 ```
 
-> **Note:** PyPI publishing is pending. Until then, use the git-clone path
-> below or the `.deb`/`.rpm` from the releases page.
-
 ### deb / rpm (system-wide install)
 
 Download the latest `.deb` or `.rpm` from the [GitHub releases page](https://github.com/maxwhipw/marmalade-tts/releases), then:
