@@ -145,18 +145,17 @@ The `publish.yml` workflow then:
 
 You can watch progress at the repo's "Actions" tab.
 
-### Local build (deb/rpm packages, not yet automated)
+### Local build (optional, for testing)
 
-The `.deb` and `.rpm` packages are still built locally; they aren't yet
-part of the workflow because they require `fpm` (a Ruby tool) and a
-build host. To build them:
+The same `.deb` and `.rpm` builds run unattended in the workflow, but
+you can produce them locally for testing. Requires `fpm` (Ruby) and
+`rpmbuild`:
 
 ```sh
+sudo apt install ruby ruby-dev rpm
+sudo gem install --no-document fpm
 make deb rpm
 ```
-
-…then upload the resulting files to the GitHub release manually via
-the web UI or `gh release upload vX.Y.Z marmalade-tts_X.Y.Z_amd64.deb`.
 
 ---
 

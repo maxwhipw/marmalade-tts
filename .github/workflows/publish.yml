@@ -60,6 +60,36 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  build-system-packages:
+    name: Build .deb and .rpm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install fpm + rpmbuild
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # rpm provides rpmbuild so fpm can produce RPMs from a Debian host.
+          sudo apt-get install -y --no-install-recommends ruby ruby-dev rpm
+          sudo gem install --no-document fpm
+
+      - name: Build deb and rpm via make
+        run: make deb rpm
+
+      - name: Show built packages
+        run: ls -la *.deb *.rpm
+
+      - name: Upload system packages as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-packages
+          path: |
+            *.deb
+            *.rpm
+          if-no-files-found: error
+
   publish-pypi:
     name: Publish to PyPI
     needs: build
@@ -83,10 +113,13 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           attestations: true
+          # Don't fail when re-running the workflow against an already-published
+          # tag (e.g. to refresh deb/rpm on the GitHub release).
+          skip-existing: true
 
   github-release:
     name: Attach artifacts to GitHub release
-    needs: build
+    needs: [build, build-system-packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -97,12 +130,20 @@ jobs:
           name: dist
           path: dist/
 
+      - name: Download system packages
+        uses: actions/download-artifact@v4
+        with:
+          name: system-packages
+          path: dist/
+
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.whl
             dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
           # Pulls release notes from PRs/commits since the previous tag.
           # Hand-written CHANGELOG.md entries can still be added to the
           # release body afterwards via the GitHub UI.
