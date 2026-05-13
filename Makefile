@@ -45,7 +45,7 @@ deb: systemd-system
 		--depends python3 \
 		--depends python3-yaml \
 		--depends python3-num2words \
-		--recommends sox \
+		--deb-recommends sox \
 		--after-install packaging/postinst.sh \
 		--before-remove packaging/prerm.sh \
 		--deb-no-default-config-files \
