@@ -88,18 +88,50 @@ def get_path(cfg: dict, dotpath: str):
     return cur, True
 
 
+def _coerce_value(s: str):
+    """Coerce a CLI-supplied string to a typed Python value.
+
+    Predictable rules (chosen so LLM-generated commands don't surprise):
+      - ``true`` / ``false``           → bool  (case-insensitive)
+      - ``null`` / ``~`` / empty       → None
+      - integer-looking                → int
+      - float-looking                  → float
+      - everything else                → string, preserved verbatim
+
+    Deliberately does NOT honor YAML 1.1's ``yes/no/on/off`` aliases —
+    those are a common footgun (the "Norway problem"). A future engine
+    or voice named ``"on"`` keeps its name.
+    """
+    if not isinstance(s, str):
+        return s
+    lower = s.strip().lower()
+    if lower == "true":
+        return True
+    if lower == "false":
+        return False
+    if lower in ("null", "~", ""):
+        return None
+    # int — must be pure digits with optional leading sign, no leading zeros
+    # weirdness (so "007" stays a string).
+    try:
+        if s.lstrip("-+").isdigit():
+            return int(s)
+    except (ValueError, AttributeError):
+        pass
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return s
+
+
 def set_path(cfg: dict, dotpath: str, value):
     """Set a value in cfg by dot-separated key path (creates parents)."""
     keys = dotpath.split(".")
     cur = cfg
     for k in keys[:-1]:
         cur = cur.setdefault(k, {})
-    # Try to parse value as YAML (so numbers/bools are typed correctly)
     if isinstance(value, str):
-        try:
-            value = yaml.safe_load(value)
-        except Exception:
-            pass
+        value = _coerce_value(value)
     cur[keys[-1]] = value
 
 

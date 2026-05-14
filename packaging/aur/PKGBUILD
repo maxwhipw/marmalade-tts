@@ -1,6 +1,6 @@
 # Maintainer: marmalade-tts contributors
 pkgname=marmalade-tts
-pkgver=0.4.3
+pkgver=0.4.4
 pkgrel=1
 pkgdesc="Unified local TTS CLI — kitten | kokoro | piper | coqui | pocket"
 arch=('any')

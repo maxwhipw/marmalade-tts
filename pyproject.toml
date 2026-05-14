@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "marmalade-tts"
-version = "0.4.3"
+version = "0.4.4"
 description = "Unified local TTS CLI — kitten | kokoro | piper | coqui | pocket"
 readme = "README.md"
 license = "MIT"

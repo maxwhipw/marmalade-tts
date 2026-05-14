@@ -5,6 +5,63 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-05-13
+
+CLI surface cleanup before pre-1.0 lock-in. Two independent reviewer
+agents went through the syntax matrix and turned up genuine bugs +
+inconsistencies; this release fixes them and renames the kokoro voice
+surface to drop the upstream prefix.
+
+### Added
+- **Kokoro bare voice names.** Voices are now referred to by their
+  identifier-shaped bare name (e.g. `george`, `heart`, `alpha`) rather
+  than the prefix-encoded upstream form (`bm_george`, `af_heart`). The
+  canonical upstream IDs still work everywhere — no breaking change.
+- **Voice / language are now orthogonal in kokoro.** Each voice has a
+  natural language used by default; override with `--lang` or
+  `engines.kokoro.lang` in config. Useful for accent effects (e.g. a
+  Japanese voice speaking English text reads as English-with-accent).
+- **`--no-effects` flag** to override `effects.defaults.<engine>` from
+  config to empty for a single invocation.
+- **JSON output includes a `version` field** so scripts can detect what
+  shape they're parsing without a separate `--version` call.
+- **README "Stability & versioning" section** outlining beta status,
+  semver intent post-1.0, and what's documented-and-stable vs not.
+- **README "Roadmap" section** with two near-term ideas: input
+  language detection and emoji-driven emotional prosody.
+
+### Changed
+- **`--completion` and `--list-effects` are now first-position-only.**
+  Previously substring-matched against argv — could mis-trigger when
+  the word appeared inside synthesis text. (Bug, security-adjacent.)
+- **`init --test` now exits non-zero if the test synthesis fails**,
+  making the flag usable as a CI gate.
+- **`config set` value coercion is now predictable for LLM-generated
+  commands**: only `true/false`, `null/~`, and numeric strings are
+  coerced; `yes/no/on/off` stay strings. Documented in the README.
+- **`--voice` help text** corrected — it applies to every engine, not
+  just kitten/kokoro.
+
+### Fixed
+- **Piper and Coqui no longer silently accept-and-drop a positional
+  voice token.** Previously `marmalade-tts piper ~/voice.onnx "hi"`
+  was parsed without errors, then the engine ignored the `voice` kwarg
+  and used the configured default model. Now positional voice tokens
+  are only recognized for engines whose voices are identifier-shaped
+  (kitten, kokoro, pocket). Use `--voice` for piper and coqui.
+- **`marmalade-tts <engine> <voice>` (no text) now errors** instead of
+  silently synthesizing the literal voice name.
+- **`--text "Hi" extra positional words` now errors** instead of
+  silently discarding the extra positionals.
+- **Kokoro voice detection narrowed.** Previously prefix-matched on 18
+  patterns including `hf_`, `pm_`, `em_`, etc., which would have
+  swallowed unrelated text-like tokens; now matches against a closed
+  list of the 14 voices that actually exist.
+- **`init.py` kokoro voice whitelist synced with the engine.** The old
+  5-voice list rejected 9 valid voices via `init --non-interactive`.
+- Voice lists are now imported from engine modules rather than
+  duplicated in `init.py` and `completion.py`.
+
 ## [0.4.3] — 2026-05-12
 
 ### Fixed

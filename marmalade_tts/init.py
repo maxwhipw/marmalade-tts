@@ -3,6 +3,14 @@
 import os
 import sys
 
+from .engines.kokoro import (
+    VOICES_BY_LANG as _KOKORO_VOICES_BY_LANG,
+    is_voice_token as _kokoro_is_voice_token,
+)
+
+# Flatten kokoro voice list into a single ordered list of bare names.
+_KOKORO_VOICE_CHOICES = [v for voices in _KOKORO_VOICES_BY_LANG.values() for v in voices]
+
 # Engine metadata used by both the TUI and non-interactive paths.
 ENGINE_INFO = {
     "kitten": {
@@ -34,9 +42,18 @@ ENGINE_INFO = {
         "options": {
             "voice": {
                 "prompt": "Default voice",
-                "choices": ["af_heart", "af_bella", "am_adam", "bf_emma", "bm_george"],
-                "default": "af_heart",
-                "help": "af_=American female, am_=American male, bf_=British female, bm_=British male",
+                "choices": _KOKORO_VOICE_CHOICES,
+                "default": "heart",
+                # Custom validator: accepts bare names AND canonical IDs
+                # (e.g. both "george" and "bm_george"). Used by the
+                # non-interactive path; the interactive picker still
+                # shows only the bare names from `choices`.
+                "validate": _kokoro_is_voice_token,
+                "help": ("Voices grouped by natural language: American (heart, bella, "
+                         "nicole, adam, michael), British (emma, isabella, george, "
+                         "lewis), Japanese (alpha, gongitsune, kumo), Mandarin "
+                         "(xiaobei, yunjian). Each voice defaults to its natural "
+                         "language."),
             },
         },
     },
@@ -229,8 +246,13 @@ def init_non_interactive(engines, engine_options=None):
         # Apply defaults, then overrides
         for opt_key, opt_meta in info["options"].items():
             value = engine_options.get(eng, {}).get(opt_key, opt_meta["default"])
-            # Validate if choices exist
-            if "choices" in opt_meta and value not in opt_meta["choices"]:
+            # Validate: custom validator wins; otherwise fall back to choices.
+            if "validate" in opt_meta:
+                if not opt_meta["validate"](value):
+                    print(f"[init] Invalid {opt_key} for {eng}: {value!r}",
+                          file=sys.stderr)
+                    sys.exit(1)
+            elif "choices" in opt_meta and value not in opt_meta["choices"]:
                 print(f"[init] Invalid {opt_key} for {eng}: {value!r} "
                       f"(valid: {', '.join(opt_meta['choices'])})", file=sys.stderr)
                 sys.exit(1)
@@ -240,8 +262,10 @@ def init_non_interactive(engines, engine_options=None):
         if eng == "kitten":
             cfg.setdefault("model_size", "micro")
         elif eng == "kokoro":
-            cfg.setdefault("voice", "af_heart")
-            cfg.setdefault("lang", "a")
+            cfg.setdefault("voice", "heart")
+            # Note: no 'lang' default. Voice's natural language is used unless
+            # the user sets one explicitly with `config set engines.kokoro.lang`
+            # or --lang on the CLI.
         elif eng == "piper":
             cfg.setdefault("model", "")
         elif eng == "coqui":
@@ -313,8 +337,10 @@ def init_interactive():
         if eng == "kitten":
             cfg.setdefault("model_size", "micro")
         elif eng == "kokoro":
-            cfg.setdefault("voice", "af_heart")
-            cfg.setdefault("lang", "a")
+            cfg.setdefault("voice", "heart")
+            # Note: no 'lang' default. Voice's natural language is used unless
+            # the user sets one explicitly with `config set engines.kokoro.lang`
+            # or --lang on the CLI.
         elif eng == "piper":
             cfg.setdefault("model", "")
         elif eng == "coqui":

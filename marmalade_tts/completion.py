@@ -1,16 +1,14 @@
 """Shell tab-completion generation."""
 
 from .effects import EFFECTS, BUILTIN_PRESETS
+from .engines.kitten import VOICES as KITTEN_VOICES
+from .engines.kokoro import VOICE_ALIASES as _KOKORO_ALIASES
+from .engines.pocket import VOICES as POCKET_VOICES
 
-# Engine names and known voices for completion
+# Engine names for completion
 ENGINES = ["kitten", "kokoro", "piper", "coqui", "pocket"]
-KITTEN_VOICES = ["Bella", "Jasper", "Luna", "Bruno", "Rosie", "Hugo", "Kiki", "Leo"]
-KOKORO_VOICES = [
-    "af_heart", "af_bella", "af_nicole", "am_adam", "am_michael",
-    "bf_emma", "bf_isabella", "bm_george", "bm_lewis",
-    "jf_alpha", "jf_gongitsune", "jm_kumo", "zf_xiaobei", "zm_yunjian",
-]
-POCKET_VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
+# Bare names first (primary), canonical IDs after (long form, also accepted).
+KOKORO_VOICES = list(_KOKORO_ALIASES.keys()) + list(_KOKORO_ALIASES.values())
 SUBCOMMANDS = ["config", "daemon", "init"]
 CONFIG_ACTIONS = ["show", "get", "set"]
 DAEMON_ACTIONS = ["start", "stop", "status", "start-all", "stop-all"]

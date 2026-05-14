@@ -110,6 +110,33 @@ class TestSetPath:
         val, _ = cfg_mod.get_path(sample_config, "defaults.speed")
         assert val == 1.0  # unchanged
 
+    def test_set_yes_stays_a_string(self, sample_config):
+        """YAML 1.1 'Norway problem': 'yes' should not become bool True."""
+        cfg_mod.set_path(sample_config, "defaults.engine", "yes")
+        val, _ = cfg_mod.get_path(sample_config, "defaults.engine")
+        assert val == "yes"
+        assert isinstance(val, str)
+
+    def test_set_on_off_stay_strings(self, sample_config):
+        for word in ("on", "off", "no", "y", "n"):
+            cfg_mod.set_path(sample_config, "defaults.engine", word)
+            val, _ = cfg_mod.get_path(sample_config, "defaults.engine")
+            assert val == word
+            assert isinstance(val, str)
+
+    def test_set_true_false_become_bool(self, sample_config):
+        cfg_mod.set_path(sample_config, "defaults.play", "true")
+        val, _ = cfg_mod.get_path(sample_config, "defaults.play")
+        assert val is True
+        cfg_mod.set_path(sample_config, "defaults.play", "False")  # case-insensitive
+        val, _ = cfg_mod.get_path(sample_config, "defaults.play")
+        assert val is False
+
+    def test_set_null_becomes_none(self, sample_config):
+        cfg_mod.set_path(sample_config, "engines.kokoro.lang", "null")
+        val, _ = cfg_mod.get_path(sample_config, "engines.kokoro.lang")
+        assert val is None
+
 
 # ── save / load ───────────────────────────────────────────────────────────────
 

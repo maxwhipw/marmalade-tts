@@ -33,7 +33,7 @@ GET /health
 
 ```bash
 curl http://localhost:8880/health
-# → {"status": "ok", "version": "0.4.3"}
+# → {"status": "ok", "version": "0.4.4"}
 ```
 
 No authentication required.

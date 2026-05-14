@@ -46,34 +46,31 @@ class TestLooksLikeVoice:
         for v in VOICES:
             assert looks_like_voice("kitten", v)
 
-    # Kokoro
-    def test_kokoro_af_heart(self):
+    # Kokoro — bare names and canonical IDs both detected
+    def test_kokoro_canonical_id(self):
         assert looks_like_voice("kokoro", "af_heart") is True
-
-    def test_kokoro_bm_george(self):
         assert looks_like_voice("kokoro", "bm_george") is True
+
+    def test_kokoro_bare_name(self):
+        assert looks_like_voice("kokoro", "heart") is True
+        assert looks_like_voice("kokoro", "george") is True
+        assert looks_like_voice("kokoro", "alpha") is True
 
     def test_kokoro_invalid(self):
         assert looks_like_voice("kokoro", "hello") is False
+        # Unknown prefix-shaped tokens should not match (closed list, not prefix family)
+        assert looks_like_voice("kokoro", "xy_nonsense") is False
 
-    # Piper
-    def test_piper_onnx(self):
-        assert looks_like_voice("piper", "model.onnx") is True
-
-    def test_piper_path(self):
-        assert looks_like_voice("piper", "/some/path/model.onnx") is True
-
-    def test_piper_tilde(self):
-        assert looks_like_voice("piper", "~/voices/model.onnx") is True
-
-    def test_piper_plain_text(self):
+    # Piper — does NOT accept positional voice; --voice is required
+    def test_piper_path_not_treated_as_voice(self):
+        assert looks_like_voice("piper", "model.onnx") is False
+        assert looks_like_voice("piper", "/some/path/model.onnx") is False
+        assert looks_like_voice("piper", "~/voices/model.onnx") is False
         assert looks_like_voice("piper", "hello world") is False
 
-    # Coqui
-    def test_coqui_model(self):
-        assert looks_like_voice("coqui", "tts_models/en/ljspeech/tacotron2-DDC") is True
-
-    def test_coqui_plain_text(self):
+    # Coqui — does NOT accept positional voice; --voice is required
+    def test_coqui_model_not_treated_as_voice(self):
+        assert looks_like_voice("coqui", "tts_models/en/ljspeech/tacotron2-DDC") is False
         assert looks_like_voice("coqui", "hello world") is False
 
     # Pocket
@@ -150,6 +147,30 @@ def test_completion_zsh(capsys):
         main()
     captured = capsys.readouterr()
     assert "_marmalade-tts" in captured.out
+
+
+def test_completion_only_at_argv0(capsys):
+    """--completion must NOT trigger when it appears mid-argv (e.g. inside text)."""
+    # If --completion were substring-matched, this would print the bash
+    # completion script and skip synthesis. The fix makes it argv[0]-only,
+    # so the test ends up trying to synthesize and gets to the engine layer.
+    with patch("sys.argv", ["marmalade-tts", "kokoro", "tell me about --completion"]):
+        with patch("marmalade_tts.cli.cfg_mod.load", return_value={
+            "defaults": {"engine": "kokoro", "speed": 1.0, "play": False, "preprocessing": False},
+            "engines": {"kokoro": {"voice": "heart", "daemon": False, "device": "cpu"}},
+        }):
+            # We don't need synthesis to actually work — we just verify that
+            # main() doesn't short-circuit on --completion. Patch the engine
+            # class so synthesize is a no-op and main() proceeds normally.
+            with patch("marmalade_tts.cli.ENGINE_CLASSES",
+                       {"kokoro": lambda cfg: MagicMock()}), \
+                 patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"), \
+                 patch("marmalade_tts.cli.play_wav"), \
+                 patch("marmalade_tts.cli.os.unlink"):
+                main()
+    captured = capsys.readouterr()
+    # The completion script signature must NOT appear in stdout.
+    assert "complete -F _marmalade_tts" not in captured.out
 
 
 # ── config subcommand ─────────────────────────────────────────────────────────
@@ -446,6 +467,60 @@ class TestVoicePositional:
         call_kwargs = mock_synth.call_args[1]
         assert call_kwargs.get("voice") == "alba"
 
+    def test_kokoro_bare_voice_positional(self):
+        """Bare kokoro voice names work positionally (e.g. 'george' not 'bm_george')."""
+        mock_synth = self._run_with_voice(
+            ["marmalade-tts", "kokoro", "george", "hello world"],
+            "KokoroEngine", MagicMock()
+        )
+        mock_synth.assert_called_once()
+        assert mock_synth.call_args[1].get("voice") == "george"
+
+
+# ── Error paths ──────────────────────────────────────────────────────────────
+
+
+class TestErrorPaths:
+    """The CLI should error early on malformed argument combinations."""
+
+    def test_voice_without_text_errors(self):
+        # User typed a voice but no text — should error, not synthesize the voice name
+        cfg = _fake_synth_config({"play": False})
+        with patch("sys.argv", ["marmalade-tts", "kitten", "Kiki"]), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code != 0
+
+    def test_kokoro_voice_without_text_errors(self):
+        cfg = _fake_synth_config({"play": False})
+        with patch("sys.argv", ["marmalade-tts", "kokoro", "george"]), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code != 0
+
+    def test_text_flag_with_extra_positionals_errors(self):
+        """--text "Hi" plus extra positionals that aren't a voice → error."""
+        cfg = _fake_synth_config({"play": False})
+        with patch("sys.argv", ["marmalade-tts", "kokoro", "--text", "Hello", "extra", "words"]), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code != 0
+
+    def test_text_flag_with_voice_positional_works(self):
+        """--text "Hi" plus a single voice-shaped positional is allowed (voice override)."""
+        cfg = _fake_synth_config({"play": False})
+        with patch("marmalade_tts.cli.fx.sox_available", return_value=False):
+            mock_eng = MagicMock()
+            with patch("sys.argv", ["marmalade-tts", "kitten", "Kiki", "--text", "Hi", "--no-play"]), \
+                 patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+                 patch("marmalade_tts.cli.ENGINE_CLASSES", {"kitten": lambda c: mock_eng}), \
+                 patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"):
+                main()
+        assert mock_eng.synthesize.call_args[1].get("voice") == "Kiki"
+
 
 # ── Preset resolution ────────────────────────────────────────────────────────────────────
 
@@ -666,6 +741,33 @@ class TestScriptingFlags:
             )
         result = json.loads(out.strip())
         assert "reverb=30" in result["effects"]
+
+    def test_json_includes_version(self):
+        import json
+        cfg = _fake_synth_config({"play": False})
+        _, out, _ = _run_cli_mocked(
+            ["marmalade-tts", "kokoro", "hello", "--json", "--no-play"],
+            config=cfg
+        )
+        result = json.loads(out.strip())
+        assert result["version"] == __version__
+
+    def test_no_effects_flag_overrides_config_defaults(self):
+        """--no-effects must override effects.defaults.<engine> from config."""
+        import json
+        cfg = _fake_synth_config({"play": False})
+        # Configure a default effect for kokoro
+        cfg.setdefault("effects", {}).setdefault("defaults", {})["kokoro"] = ["reverb=40"]
+        with patch("marmalade_tts.cli.fx.sox_available", return_value=True), \
+             patch("marmalade_tts.cli.fx.apply_effects") as mock_apply:
+            _, out, _ = _run_cli_mocked(
+                ["marmalade-tts", "kokoro", "hello", "--json", "--no-play", "--no-effects"],
+                config=cfg
+            )
+        result = json.loads(out.strip())
+        assert result["effects"] == []
+        # apply_effects should not have been called (empty list short-circuits)
+        mock_apply.assert_not_called()
 
     def test_no_play_skips_playback_even_when_config_wants_play(self):
         # Config says play=True, --no-play should override

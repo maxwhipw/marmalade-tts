@@ -24,8 +24,8 @@ gem install fpm
 
 ```sh
 python3 -m build
-# Produces: dist/marmalade_tts-0.4.3.tar.gz
-#           dist/marmalade_tts-0.4.3-py3-none-any.whl
+# Produces: dist/marmalade_tts-0.4.4.tar.gz
+#           dist/marmalade_tts-0.4.4-py3-none-any.whl
 ```
 
 ### Upload
@@ -49,13 +49,13 @@ pip install --index-url https://test.pypi.org/simple/ marmalade-tts
 
 ```sh
 make deb
-# Produces: marmalade-tts_0.4.3_amd64.deb
+# Produces: marmalade-tts_0.4.4_amd64.deb
 ```
 
 ### Test locally
 
 ```sh
-sudo dpkg -i marmalade-tts_0.4.3_amd64.deb
+sudo dpkg -i marmalade-tts_0.4.4_amd64.deb
 marmalade-tts --version
 sudo dpkg -r marmalade-tts
 ```
@@ -68,13 +68,13 @@ sudo dpkg -r marmalade-tts
 
 ```sh
 make rpm
-# Produces: marmalade-tts-0.4.3-1.x86_64.rpm
+# Produces: marmalade-tts-0.4.4-1.x86_64.rpm
 ```
 
 ### Test locally
 
 ```sh
-sudo rpm -i marmalade-tts-0.4.3-1.x86_64.rpm
+sudo rpm -i marmalade-tts-0.4.4-1.x86_64.rpm
 marmalade-tts --version
 sudo rpm -e marmalade-tts
 ```
@@ -197,7 +197,7 @@ The PKGBUILD is at `packaging/aur/PKGBUILD`.
    # Commit and push
    cd /tmp/aur-marmalade-tts
    git add PKGBUILD .SRCINFO
-   git commit -m "Update to 0.4.3"
+   git commit -m "Update to 0.4.4"
    git push
    ```
 

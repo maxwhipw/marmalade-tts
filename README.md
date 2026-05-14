@@ -45,10 +45,10 @@ Download the latest `.deb` or `.rpm` from the [GitHub releases page](https://git
 
 ```sh
 # Debian/Ubuntu
-sudo dpkg -i marmalade-tts_0.4.3_amd64.deb
+sudo dpkg -i marmalade-tts_0.4.4_amd64.deb
 
 # Fedora/RHEL
-sudo rpm -i marmalade-tts-0.4.3-1.x86_64.rpm
+sudo rpm -i marmalade-tts-0.4.4-1.x86_64.rpm
 ```
 
 ### AUR (Arch Linux) — coming soon
@@ -118,9 +118,12 @@ marmalade-tts "Hello" --out hello.wav
 # Speed up or slow down
 marmalade-tts "Hello" --speed 1.4
 
-# Choose a voice
-marmalade-tts kokoro "Hello" --voice bm_george
-marmalade-tts kitten "Hello" --voice Bella
+# Choose a voice (positional voice works for engines whose names look like
+# identifiers — kitten, kokoro, pocket. Use --voice for path-shaped voices
+# like piper's .onnx files and coqui's tts_models/... specs.)
+marmalade-tts kokoro george "Hello"
+marmalade-tts kitten Bella "Hello"
+marmalade-tts piper --voice ~/voices/en_US-lessac-medium.onnx "Hello"
 ```
 
 ---
@@ -131,15 +134,27 @@ marmalade-tts kitten "Hello" --voice Bella
 
 ```sh
 marmalade-tts kokoro "Hello"
-marmalade-tts kokoro "Hello" --voice bm_george    # British male
-marmalade-tts kokoro "Hello" --voice af_nicole    # American female
+marmalade-tts kokoro george "Hello"               # British male, positional
+marmalade-tts kokoro nicole "Hello"               # American female
+marmalade-tts kokoro alpha "Hello" --lang a       # Japanese voice, English accent
 marmalade-tts kokoro --list                       # show all voices
 ```
 
-Voice names follow the pattern `<lang><gender>_<name>`:
-- `a` = American English, `b` = British English, `j` = Japanese, `z` = Mandarin
-- `f` = female, `m` = male
-- Examples: `af_heart`, `am_adam`, `bf_emma`, `bm_george`
+Voices are referred to by their **bare name** (e.g. `george`):
+
+| Language | Voices |
+|----------|--------|
+| American English | `heart`, `bella`, `nicole`, `adam`, `michael` |
+| British English  | `emma`, `isabella`, `george`, `lewis` |
+| Japanese         | `alpha`, `gongitsune`, `kumo` |
+| Mandarin         | `xiaobei`, `yunjian` |
+
+Each voice has a *natural* language but kokoro can speak any voice in any
+supported language — pass `--lang a/b/j/z` (or set `engines.kokoro.lang` in
+config) to override. Useful for accent effects.
+
+The canonical upstream form (`bm_george`, `af_heart`, etc.) is also
+accepted everywhere for back-compat.
 
 ### kitten
 
@@ -414,11 +429,23 @@ marmalade-tts config set defaults.speed 1.2
 marmalade-tts config set defaults.play false
 ```
 
+**Value coercion rules** (predictable so AI agents don't get surprised):
+
+- `true` / `false` (any case) → bool
+- `null` / `~` / empty → None
+- Integer-looking strings → int
+- Float-looking strings → float
+- Everything else → string, verbatim
+
+`yes` / `no` / `on` / `off` are **kept as strings**, not coerced to bools.
+This is intentional — YAML 1.1's "Norway problem" silently turning the
+word "yes" into a boolean is a common footgun.
+
 ### Full config reference
 
 ```yaml
 defaults:
-  engine: kokoro        # default engine when none is specified
+  engine: kitten        # default engine when none is specified
   device: cpu           # cpu or cuda
   speed: 1.0            # speech speed multiplier
   play: true            # play audio automatically (false = save only)
@@ -427,7 +454,7 @@ defaults:
 presets:
   fast:
     kitten: nano
-    kokoro: af_heart
+    kokoro: heart
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
     pocket: alba
@@ -439,8 +466,8 @@ presets:
 engines:
   kokoro:
     device: cpu
-    voice: af_heart
-    lang: a             # a=American, b=British, j=Japanese, z=Mandarin
+    voice: heart        # bare name (or canonical "af_heart" for back-compat)
+    # lang: a           # optional — defaults to the voice's natural language
     daemon: false
     # preprocessing: [currency, percent]   # or true / false
 
@@ -543,18 +570,23 @@ aplay "$WAV"
 
 # JSON result for structured consumption
 marmalade-tts --json --no-play "Hello"
-# → {"ok": true, "engine": "kokoro", "voice": "af_heart", "out": "/tmp/...", "text": "Hello", "effects": []}
+# → {"ok": true, "version": "0.4.4", "engine": "kitten", "voice": "Kiki",
+#    "out": "/tmp/...", "effects": [], "text": "Hello"}
 
 # Never play back, just generate
 marmalade-tts --no-play --out result.wav "Generate but don't play"
+
+# Skip engine-default effects from config (e.g. for a dry signal)
+marmalade-tts --no-effects "Hello"
 
 # Combine flags for maximum scriptability
 cat script.txt | marmalade-tts --stdin --quiet --json --no-play --out speech.wav
 ```
 
 Exit codes:
-- `0` — synthesis succeeded
-- `1` — error (bad args, engine failure, missing text, etc.)
+- `0` — success
+- non-zero — failure. Specific codes are not promised; expect `1` for
+  user-visible errors and `2` from argparse for bad flags.
 
 ---
 
@@ -607,6 +639,55 @@ walks you through installing whichever engines you want.
 
 Want to add a new TTS engine? See **[ENGINE-GUIDE.md](ENGINE-GUIDE.md)** for a
 step-by-step walkthrough of every file that needs to be touched.
+
+Engines are first-class citizens in this repo. There is no plugin /
+entry-point mechanism for external engines — adding an engine is a PR,
+not a third-party install. Each engine addition is treated as a feature
+and ships in the next minor version bump.
+
+---
+
+## Stability & versioning
+
+marmalade-tts is currently in **beta** (`0.4.x`). The CLI surface,
+config schema, and JSON output are usable today and the project tries
+hard not to break working commands, but small changes between minor
+versions are still possible until **v1.0.0**. From `1.0.0` onward this
+project follows [Semantic Versioning](https://semver.org/):
+
+- **Patch** (`1.0.x`) — bug fixes only, no surface changes.
+- **Minor** (`1.x.0`) — new engines, new flags, new config keys. Backwards
+  compatible.
+- **Major** (`x.0.0`) — breaking changes to CLI surface, config keys, or
+  JSON output. Avoided where possible; called out clearly in the
+  changelog when needed.
+
+If you're scripting against marmalade-tts today, expect the surfaces
+documented in this README to be stable. Anything not documented here
+(help-text wording, init wizard formatting, internal subprocess
+invocation, daemon socket protocol) may evolve without notice.
+
+---
+
+## Roadmap
+
+Ideas under consideration. No promises on timing — feedback and PRs welcome.
+
+### Language detection
+
+Auto-detect the input text's language and route to an appropriate
+engine / voice / model — e.g. Japanese text routes to a kokoro Japanese
+voice, Mandarin to a kokoro Mandarin voice, the rest stay on the
+configured default. Per-language defaults configurable in `config.yaml`.
+
+### Emoji-driven emotional prosody
+
+Treat emojis as inline prosody directives — e.g. `"Hello 🙂"` reads
+warm, `"Hello 😢"` reads sad, `"Hello! ⚡"` reads energetic. Requires
+upstream model support for emotion conditioning that runs close to
+real-time on consumer hardware (CPU or modest GPU), with a FOSS
+licence. Will track FOSS expressive-TTS research and integrate when the
+stack exists.
 
 ---
 

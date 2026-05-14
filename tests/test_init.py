@@ -26,7 +26,10 @@ class TestNonInteractive:
     def test_multiple_engines(self):
         result = init_non_interactive(["kitten", "piper", "kokoro"])
         assert len(result) == 3
-        assert result["kokoro"]["voice"] == "af_heart"
+        # Kokoro voice default is now the bare name, not the canonical ID.
+        assert result["kokoro"]["voice"] == "heart"
+        # No lang default — voice's natural language is used at synth time.
+        assert "lang" not in result["kokoro"]
 
     def test_override_model_size(self):
         result = init_non_interactive(
@@ -36,6 +39,15 @@ class TestNonInteractive:
         assert result["kitten"]["model_size"] == "nano"
 
     def test_override_kokoro_voice(self):
+        # Bare name (preferred form)
+        result = init_non_interactive(
+            ["kokoro"],
+            engine_options={"kokoro": {"voice": "adam"}}
+        )
+        assert result["kokoro"]["voice"] == "adam"
+
+    def test_override_kokoro_voice_canonical_form(self):
+        # Canonical form also still accepted (back-compat)
         result = init_non_interactive(
             ["kokoro"],
             engine_options={"kokoro": {"voice": "am_adam"}}
@@ -176,7 +188,9 @@ class TestEngineMetadata:
     def test_kokoro_has_voice_option(self):
         opts = ENGINE_INFO["kokoro"]["options"]
         assert "voice" in opts
-        assert "af_heart" in opts["voice"]["choices"]
+        # Choices are bare names; default is "heart".
+        assert "heart" in opts["voice"]["choices"]
+        assert opts["voice"]["default"] == "heart"
 
     def test_engine_order_matches_info(self):
         for eng in ENGINE_ORDER:

@@ -12,7 +12,7 @@ from . import preprocessing as pp
 from .playback import play_wav, make_tmp_wav
 from .completion import bash_completion, zsh_completion
 from .engines.kitten import KittenEngine, VOICES as KITTEN_VOICES
-from .engines.kokoro import KokoroEngine
+from .engines.kokoro import KokoroEngine, is_voice_token as kokoro_is_voice_token
 from .engines.piper import PiperEngine
 from .engines.coqui import CoquiEngine
 from .engines.pocket import PocketEngine, VOICES as POCKET_VOICES
@@ -236,6 +236,7 @@ def cmd_init(args: list):
     if not non_interactive and not do_test:
         do_test = _ask_yn("  Run a test synthesis?", default=True)
 
+    test_failed = False
     if do_test:
         print(f"\n  🔊 Testing {default_engine}...")
         try:
@@ -250,34 +251,44 @@ def cmd_init(args: list):
                 pass
             print("  ✓ Test passed!\n")
         except Exception as e:
+            test_failed = True
             print(f"  ✗ Test failed: {e}", file=sys.stderr)
             print("    You may need to install the engine first. See the hints above.\n",
                   file=sys.stderr)
 
     print("  🍊 Setup complete. Try: marmalade-tts \"Hello world\"\n")
 
+    # --test gates the exit code: if the user asked for a test and it failed,
+    # exit non-zero so CI scripts can detect the failure.
+    if parsed.test and test_failed:
+        sys.exit(1)
+
 
 
 # ── Voice/model heuristic ───────────────────────────────────────────────────
 
-KOKORO_PREFIXES = (
-    "af_", "am_", "bf_", "bm_", "hf_", "hm_", "ef_", "em_",
-    "ff_", "fm_", "if_", "im_", "pf_", "pm_", "jf_", "jm_", "zf_", "zm_",
-)
-
 
 def looks_like_voice(engine: str, token: str) -> bool:
-    """Check if a positional token is a voice/model override rather than text."""
+    """Check if a positional token is a voice override rather than text.
+
+    Only engines whose voice names are unambiguously identifier-shaped
+    (not English text, not file paths) accept positional voices:
+
+      - kitten:  closed list of names
+      - kokoro:  closed list of bare names AND canonical IDs
+      - pocket:  closed list of names, OR a .wav / .safetensors file path
+
+    piper and coqui voices are file paths / model specs that are
+    structurally too similar to user text. Use ``--voice`` for those.
+    """
     if engine == "kitten":
         return token in KITTEN_VOICES
     if engine == "kokoro":
-        return any(token.startswith(p) for p in KOKORO_PREFIXES)
-    if engine == "piper":
-        return token.endswith(".onnx") or "/" in token or token.startswith("~")
-    if engine == "coqui":
-        return token.startswith("tts_models/")
+        return kokoro_is_voice_token(token)
     if engine == "pocket":
-        return token in POCKET_VOICES or token.endswith(".wav") or token.endswith(".safetensors")
+        return (token in POCKET_VOICES
+                or token.endswith(".wav")
+                or token.endswith(".safetensors"))
     return False
 
 
@@ -306,8 +317,14 @@ def _resolve_text_and_voice(args, positional, engine_name, parser):
         return sys.stdin.read(), None
     if args.text:
         text = resolve_text(args.text)
-        if positional and looks_like_voice(engine_name, positional[0]):
-            voice_arg = positional[0]
+        if positional:
+            if looks_like_voice(engine_name, positional[0]) and len(positional) == 1:
+                voice_arg = positional[0]
+            else:
+                parser.error(
+                    "When --text is given, extra positional arguments are not "
+                    "accepted (only an optional voice token before the text)."
+                )
         return text, voice_arg
     if not positional:
         parser.error("Provide text (or --text / @file / -)")
@@ -316,8 +333,10 @@ def _resolve_text_and_voice(args, positional, engine_name, parser):
     if looks_like_voice(engine_name, first) and rest:
         return resolve_text(" ".join(rest)), first
     if looks_like_voice(engine_name, first) and not rest:
-        # Just a voice token with no follow-up text — treat token as text.
-        return resolve_text(first), None
+        parser.error(
+            f"{first!r} looks like a voice but no text was given. "
+            f"Add text, or run `marmalade-tts {engine_name} --list` to see voices."
+        )
     return resolve_text(" ".join(positional)), None
 
 
@@ -368,6 +387,7 @@ def _report_output(args, engine_name, voice, out_path, effect_list, text, eng_cf
         import json
         print(json.dumps({
             "ok": True,
+            "version": __version__,
             "engine": engine_name,
             "voice": voice or eng_cfg.get("voice"),
             "out": out_path,
@@ -385,10 +405,11 @@ def _report_output(args, engine_name, voice, out_path, effect_list, text, eng_cf
 def main():
     argv = sys.argv[1:]
 
-    # ── Quick intercepts ──
-    if "--completion" in argv:
-        idx = argv.index("--completion")
-        shell = argv[idx + 1] if idx + 1 < len(argv) else "bash"
+    # ── Quick intercepts (only when explicitly given as the first argument,
+    # so they can't trigger from text content like
+    # `marmalade-tts kokoro "tell me about --completion"`). ──
+    if argv and argv[0] == "--completion":
+        shell = argv[1] if len(argv) > 1 else "bash"
         print(zsh_completion() if shell == "zsh" else bash_completion())
         return
 
@@ -401,7 +422,7 @@ def main():
     if argv and argv[0] == "init":
         cmd_init(argv[1:])
         return
-    if "--list-effects" in argv:
+    if argv and argv[0] == "--list-effects":
         config_tmp = cfg_mod.load()
         user_presets = config_tmp.get("effects", {}).get("presets", {})
         fx.list_effects(user_presets)
@@ -425,9 +446,11 @@ def main():
 Examples:
   marmalade-tts "Hello world"                    # uses default engine
   marmalade-tts kokoro "Hello world"             # specify engine
-  marmalade-tts kitten Kiki "Hello from Kiki"    # specify engine + voice
-  marmalade-tts pocket alba "Voice cloning ready"   # pocket engine + voice
+  marmalade-tts kitten Kiki "Hello from Kiki"    # positional voice
+  marmalade-tts kokoro george "Hello"            # bare-name kokoro voice
+  marmalade-tts pocket alba "Voice cloning ready"
   marmalade-tts pocket my_voice.wav "Cloned voice"  # pocket voice cloning
+  marmalade-tts piper --voice ~/voices/foo.onnx "Hi"  # piper needs --voice
   marmalade-tts --fast "Quick test"              # fast preset
   marmalade-tts --no-preprocessing "$100 test"   # skip text normalization
   marmalade-tts config set defaults.engine kitten
@@ -446,9 +469,14 @@ Examples:
     parser.add_argument("--speed", type=float, default=None,
                         help="Speech speed multiplier (default: 1.0)")
     parser.add_argument("--voice", default=None,
-                        help="Voice name override (kitten/kokoro)")
+                        help="Voice/model override (engine-specific format). "
+                             "For piper and coqui, --voice is required (positional "
+                             "voices are not supported).")
     parser.add_argument("--lang", default=None,
-                        help="Language code — kokoro only (a/b/h/e/f/i/p/j/z)")
+                        help="Language code — kokoro only (a=American, b=British, "
+                             "j=Japanese, z=Mandarin). Defaults to the voice's "
+                             "natural language; pass a different code for an "
+                             "accent effect.")
     parser.add_argument("--speaker", default=None,
                         help="Speaker id — piper multi-speaker models")
     # Presets
@@ -469,6 +497,8 @@ Examples:
                         help="Apply audio effect after synthesis (repeatable). "
                              "Format: name or name=value, e.g. reverb=50, pitch=200, robot. "
                              "Run --list-effects to see all effects and presets.")
+    parser.add_argument("--no-effects", action="store_true",
+                        help="Skip all effects, including engine defaults from config.")
     parser.add_argument("--list-effects", action="store_true",
                         help="List all available audio effects and presets")
     parser.add_argument("--list", action="store_true",
@@ -560,11 +590,15 @@ Examples:
     engine.synthesize(text, out_path, **synth_kwargs)
 
     # ── Effects ──
-    # CLI --effect flags override engine defaults entirely. If no CLI flag is
-    # given, fall back to effects.defaults.<engine> from config.
-    effect_list = args.effects or (
-        config.get("effects", {}).get("defaults", {}).get(engine_name, [])
-    )
+    # Precedence: --no-effects > --effect flags > engine defaults from config.
+    if args.no_effects:
+        effect_list = []
+    elif args.effects:
+        effect_list = args.effects
+    else:
+        effect_list = (
+            config.get("effects", {}).get("defaults", {}).get(engine_name, [])
+        )
     _apply_effects_if_any(out_path, effect_list, config)
 
     # ── Output reporting ──

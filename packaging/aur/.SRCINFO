@@ -1,6 +1,6 @@
 pkgbase = marmalade-tts
 	pkgdesc = Unified local TTS CLI — kitten | kokoro | piper | coqui | pocket
-	pkgver = 0.4.3
+	pkgver = 0.4.4
 	pkgrel = 1
 	url = https://github.com/maxwhipw/marmalade-tts
 	arch = any
@@ -11,7 +11,7 @@ pkgbase = marmalade-tts
 	optdepends = sox: audio effects support
 	optdepends = kokoro: Kokoro TTS engine (install via pip/venv per upstream)
 	optdepends = piper-tts: Piper TTS engine
-	source = marmalade-tts-0.4.3.tar.gz::https://github.com/maxwhipw/marmalade-tts/archive/refs/tags/v0.4.3.tar.gz
+	source = marmalade-tts-0.4.4.tar.gz::https://github.com/maxwhipw/marmalade-tts/archive/refs/tags/v0.4.4.tar.gz
 	sha256sums = SKIP
 
 pkgname = marmalade-tts
