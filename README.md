@@ -652,20 +652,26 @@ and ships in the next minor version bump.
 marmalade-tts is currently in **beta** (`0.4.x`). The CLI surface,
 config schema, and JSON output are usable today and the project tries
 hard not to break working commands, but small changes between minor
-versions are still possible until **v1.0.0**. From `1.0.0` onward this
-project follows [Semantic Versioning](https://semver.org/):
+versions are still possible until **v1.0.0**.
+
+**At `v1.0.0` the documented CLI surface is _locked_.** "Locked" means a
+hard guarantee: the flags, subcommands, config keys, and JSON output
+documented in this README will not change in a breaking way except in a
+**major version release** (`x.0.0`). From `1.0.0` onward this project
+follows [Semantic Versioning](https://semver.org/):
 
 - **Patch** (`1.0.x`) — bug fixes only, no surface changes.
-- **Minor** (`1.x.0`) — new engines, new flags, new config keys. Backwards
-  compatible.
-- **Major** (`x.0.0`) — breaking changes to CLI surface, config keys, or
-  JSON output. Avoided where possible; called out clearly in the
-  changelog when needed.
+- **Minor** (`1.x.0`) — new engines, new flags, new config keys. Always
+  backwards compatible — existing commands keep working unchanged.
+- **Major** (`x.0.0`) — the _only_ release type permitted to break the
+  locked surface. Breaking changes are called out explicitly in the
+  changelog. The project aims to make these rare.
 
-If you're scripting against marmalade-tts today, expect the surfaces
-documented in this README to be stable. Anything not documented here
-(help-text wording, init wizard formatting, internal subprocess
-invocation, daemon socket protocol) may evolve without notice.
+If you're scripting against marmalade-tts, the surfaces documented in
+this README are what's covered by the lock. Anything **not** documented
+here (help-text wording, `--list*` output formatting, init wizard
+prompts, internal subprocess invocation, daemon socket protocol) is not
+part of the contract and may evolve in any release.
 
 ---
 
