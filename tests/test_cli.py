@@ -142,11 +142,43 @@ def test_completion_bash(capsys):
     assert "reverb" in captured.out  # effects should be in completion
 
 
+def test_completion_bash_includes_voices(capsys):
+    """Bash completion should embed the voice lists for kitten/kokoro/pocket."""
+    with patch("sys.argv", ["marmalade-tts", "--completion", "bash"]):
+        main()
+    out = capsys.readouterr().out
+    assert "Kiki" in out                       # kitten voice
+    assert "george" in out                     # kokoro bare name
+    assert "bm_george" in out                  # kokoro canonical form
+    assert "alba" in out                       # pocket voice
+
+
+def test_completion_bash_piper_voice_uses_file_completion(capsys):
+    """piper --voice should fall back to .onnx file completion, not a voice list."""
+    with patch("sys.argv", ["marmalade-tts", "--completion", "bash"]):
+        main()
+    out = capsys.readouterr().out
+    # The --voice case statement must route piper to _filedir onnx.
+    assert "piper)  _filedir onnx" in out
+
+
 def test_completion_zsh(capsys):
     with patch("sys.argv", ["marmalade-tts", "--completion", "zsh"]):
         main()
     captured = capsys.readouterr()
     assert "_marmalade-tts" in captured.out
+
+
+def test_completion_zsh_is_engine_aware(capsys):
+    """zsh completion should have a state machine that completes voices per-engine."""
+    with patch("sys.argv", ["marmalade-tts", "--completion", "zsh"]):
+        main()
+    out = capsys.readouterr().out
+    # State-machine markers and the engine-aware voice helper.
+    assert "->arg2" in out                     # positional voice slot has a state
+    assert "->voiceflag" in out                # --voice flag has a state
+    assert "_marmalade_voices" in out          # the shared engine-aware helper
+    assert "_files -g '*.onnx'" in out         # piper file completion in zsh too
 
 
 def test_completion_only_at_argv0(capsys):

@@ -61,9 +61,10 @@ _marmalade_tts() {{
     local effect_names="{effect_names}"
     local flags="--out --play --no-play --speed --voice --lang --speaker \\
                  --fast --balanced --quality \\
-                 --effect --list-effects --list --preprocessing --no-preprocessing \\
-                 --list-rules --completion --quiet --json --print-path \\
-                 --stdin --text -t --version"
+                 --effect --no-effects --list-effects --list \\
+                 --preprocessing --no-preprocessing \\
+                 --list-rules --completion --quiet -q --json --print-path \\
+                 --stdin --text -t --version --help -h"
 
     # First positional: engine or subcommand
     if [[ $cword -eq 1 ]]; then
@@ -91,7 +92,10 @@ _marmalade_tts() {{
         return
     fi
 
-    # Second positional after engine: voice name
+    # Second positional after engine: voice name.
+    # Only kitten/kokoro/pocket accept a positional voice — for those,
+    # complete from the voice list. piper/coqui require --voice, so the
+    # second positional there is text; offer flags instead.
     if [[ $cword -eq 2 ]]; then
         case "${{words[1]}}" in
             kitten) COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
@@ -108,19 +112,23 @@ _marmalade_tts() {{
         return
     fi
 
-    # --voice flag values
+    # --voice flag values — engine-specific.
+    # kitten/kokoro/pocket: complete from the voice list.
+    # piper: voices are .onnx model files — complete file paths.
+    # coqui: voices are tts_models/... specs — no practical completion.
     if [[ "$prev" == "--voice" ]]; then
         case "${{words[1]}}" in
             kitten) COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
             kokoro) COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
             pocket) COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
+            piper)  _filedir onnx ;;
         esac
         return
     fi
 
     # --lang flag values
     if [[ "$prev" == "--lang" ]]; then
-        COMPREPLY=( $(compgen -W "a b h e f i p j z" -- "$cur") )
+        COMPREPLY=( $(compgen -W "a b j z" -- "$cur") )
         return
     fi
 
@@ -153,18 +161,30 @@ def zsh_completion() -> str:
 # Add to .zshrc:  eval "$(marmalade-tts --completion zsh)"
 
 _marmalade-tts() {{
+    local curcontext="$curcontext" state line
     local -a engines=({engines})
     local -a subcommands=(config daemon init)
     local -a kitten_voices=({kitten_voices})
     local -a kokoro_voices=({kokoro_voices})
     local -a pocket_voices=({pocket_voices})
     local -a effect_names=({effect_names})
-    local -a daemon_actions=(start stop status start-all stop-all)
 
-    _arguments \\
-        '1:engine_or_subcmd:((${{engines}} ${{subcommands}}))' \\
-        '2:voice_or_text:' \\
-        '*:text:' \\
+    # Engine-aware voice completion, shared by the positional voice slot
+    # and the --voice flag. Reads $words[2] (the engine) to decide.
+    _marmalade_voices() {{
+        case "${{words[2]}}" in
+            kitten) _values 'kitten voice' $kitten_voices ;;
+            kokoro) _values 'kokoro voice' $kokoro_voices ;;
+            pocket) _values 'pocket voice' $pocket_voices ;;
+            piper)  _files -g '*.onnx' ;;
+            *) ;;  # coqui: tts_models/... specs — no practical completion
+        esac
+    }}
+
+    _arguments -C \\
+        '1:engine or subcommand:->engine' \\
+        '2:voice or text:->arg2' \\
+        '*::text:' \\
         '--out[Output WAV file]:file:_files' \\
         '--play[Force playback]' \\
         '--no-play[Skip playback]' \\
@@ -174,13 +194,14 @@ _marmalade-tts() {{
         '--stdin[Read text from stdin]' \\
         '(-t --text)'{{-t,--text}}'[Text to synthesize]:text:' \\
         '--speed[Speech speed]:speed:' \\
-        '--voice[Voice name]:voice:((${{kitten_voices}} ${{kokoro_voices}} ${{pocket_voices}}))' \\
-        '--lang[Language code]:lang:(a b h e f i p j z)' \\
+        '--voice[Voice/model override]:voice:->voiceflag' \\
+        '--lang[Language code]:lang:(a b j z)' \\
         '--speaker[Speaker ID]:id:' \\
         '--fast[Fast preset]' \\
         '--balanced[Balanced preset]' \\
         '--quality[Quality preset]' \\
-        '*--effect[Audio effect]:effect:((${{effect_names}}))' \\
+        '*--effect[Audio effect]:effect:(($effect_names))' \\
+        '--no-effects[Skip all effects, including config defaults]' \\
         '--list-effects[List available audio effects and presets]' \\
         '--list[List voices]' \\
         '--preprocessing[Enable text preprocessing]' \\
@@ -188,6 +209,20 @@ _marmalade-tts() {{
         '--list-rules[List preprocessing rules]' \\
         '--version[Print version]' \\
         '--completion[Generate completion]:shell:(bash zsh)'
+
+    case $state in
+        engine)
+            _values 'engine or subcommand' $engines $subcommands
+            ;;
+        arg2)
+            # Second positional: a voice for kitten/kokoro/pocket/piper,
+            # otherwise free text.
+            _marmalade_voices
+            ;;
+        voiceflag)
+            _marmalade_voices
+            ;;
+    esac
 }}
 
 _marmalade-tts "$@"

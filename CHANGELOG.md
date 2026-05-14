@@ -5,6 +5,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Tab completion is now engine-aware for voices everywhere it can be.**
+  - bash: `piper --voice <TAB>` now completes `.onnx` file paths instead
+    of nothing.
+  - zsh: the positional voice slot (`marmalade-tts kitten <TAB>`) now
+    completes — previously it offered nothing. `--voice` is now
+    engine-aware (was lumping every engine's voices together), and piper
+    gets `.onnx` file completion.
+  - bash flag list gained `--no-effects`, `-q`, `--help`, `-h`.
+  - coqui voices (`tts_models/...` specs) remain uncompletable by design —
+    enumerating them requires loading the whole coqui stack.
+
 ## [0.4.4] — 2026-05-13
 
 CLI surface cleanup before pre-1.0 lock-in. Two independent reviewer
