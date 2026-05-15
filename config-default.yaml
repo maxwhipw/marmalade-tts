@@ -69,6 +69,13 @@ engines:
     device: cpu
     model: matcha_ljspeech   # or matcha_vctk (multi-speaker), or a .ckpt path
     daemon: false            # set true to keep the model in RAM (recommended)
+    # Quality knobs (optional). matcha-tts is a flow-matching ODE model;
+    # `steps` controls how many iterations the solver runs. Default 10 (fast,
+    # what matcha-tts itself ships); 50 sounds noticeably less robotic but
+    # is ~5x slower. `temperature` controls sampling stochasticity
+    # (default 0.667).
+    # steps: 50
+    # temperature: 0.667
 
   emojivoice:
     device: cpu
@@ -76,6 +83,9 @@ engines:
     daemon: false            # set true to keep the model in RAM (recommended)
     # Emoji-controlled expressive TTS: an emoji in the text (🤣 😭 😡 …)
     # selects the emotional style and is stripped before synthesis.
+    # Same quality knobs as matcha:
+    # steps: 50
+    # temperature: 0.667
 
 # Audio effects — requires sox (apt install sox)
 # Custom presets combine built-in effects. Use --list-effects to see all options.

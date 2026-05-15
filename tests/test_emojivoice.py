@@ -204,3 +204,37 @@ class TestEmojiVoiceSynthesize:
             with pytest.raises(SystemExit):
                 EmojiVoiceEngine({"device": "cpu"}).synthesize(
                     "hi", str(tmp_path / "o.wav"))
+
+    def test_steps_and_temperature_propagate_to_subprocess(self, tmp_path):
+        from marmalade_tts.engines.emojivoice import EmojiVoiceEngine
+        out_path = str(tmp_path / "out.wav")
+        fake_proc = MagicMock(returncode=0, stderr=b"")
+        with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc) as mock_run:
+            EmojiVoiceEngine({"device": "cpu", "steps": 50,
+                              "temperature": 0.5}).synthesize("hi", out_path)
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--steps") + 1] == "50"
+        assert cmd[cmd.index("--temperature") + 1] == "0.5"
+
+    def test_no_steps_or_temperature_keeps_cmd_clean(self, tmp_path):
+        from marmalade_tts.engines.emojivoice import EmojiVoiceEngine
+        out_path = str(tmp_path / "out.wav")
+        fake_proc = MagicMock(returncode=0, stderr=b"")
+        with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc) as mock_run:
+            EmojiVoiceEngine({"device": "cpu"}).synthesize("hi", out_path)
+        cmd = mock_run.call_args[0][0]
+        assert "--steps" not in cmd
+        assert "--temperature" not in cmd
+
+    def test_steps_propagates_to_daemon_request(self, tmp_path):
+        from marmalade_tts.engines.emojivoice import EmojiVoiceEngine
+        out_path = str(tmp_path / "out.wav")
+        with patch("marmalade_tts.engines.emojivoice.dmgr.synthesize") as mock_dmgr:
+            EmojiVoiceEngine({"device": "cpu", "daemon": True,
+                              "steps": 50, "temperature": 0.5}).synthesize(
+                "Hello", out_path)
+        request = mock_dmgr.call_args[0][1]
+        assert request["steps"] == 50
+        assert request["temperature"] == 0.5

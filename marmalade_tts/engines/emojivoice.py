@@ -97,6 +97,10 @@ class EmojiVoiceEngine(Engine):
         self.voice = cfg.get("voice", "paige")
         self.device = cfg.get("device", "cpu")
         self.use_daemon = cfg.get("daemon", False)
+        # Quality knobs (see engines/matcha.py for the full explanation).
+        # None means "let the engine venv default decide".
+        self.steps = cfg.get("steps")
+        self.temperature = cfg.get("temperature")
 
     def _checkpoint(self, voice: str) -> str:
         fname = CHECKPOINTS.get(voice)
@@ -124,6 +128,10 @@ class EmojiVoiceEngine(Engine):
         if self.use_daemon:
             request = {"text": clean_text, "spk": spk, "voice": v,
                        "length_scale": length_scale, "out": out_path}
+            if self.steps is not None:
+                request["steps"] = int(self.steps)
+            if self.temperature is not None:
+                request["temperature"] = float(self.temperature)
             dmgr.synthesize("emojivoice", request, auto_start=True, timeout=120.0)
             return
 
@@ -158,6 +166,10 @@ class EmojiVoiceEngine(Engine):
             "--spk", str(spk),
             "--length-scale", str(length_scale),
         ]
+        if self.steps is not None:
+            cmd += ["--steps", str(int(self.steps))]
+        if self.temperature is not None:
+            cmd += ["--temperature", str(float(self.temperature))]
 
         proc = subprocess.run(cmd, capture_output=True, env=env)
         if proc.returncode != 0:

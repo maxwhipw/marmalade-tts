@@ -18,6 +18,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   stable than the CLI's.
 
 ### Added
+- **Quality knobs for matcha + emojivoice.** Both engines now read
+  `engines.matcha.steps` / `engines.matcha.temperature` (and the
+  emojivoice equivalents) from config. `steps` is matcha-tts's
+  ODE-solver iteration count — the main quality lever; default 10
+  (fast), 50 is noticeably less robotic at ~5× the synthesis time.
+  Propagates through both the daemon (warm) and one-shot (cold) paths.
+  Unset → engine venv's own default applies, so existing configs are
+  unaffected.
 - **Batch synthesis (universal).** Multi-line text input — from `@file.txt`,
   `--stdin`, or `--text "a\nb"` — now produces one WAV per non-empty line.
   Plays each through the speakers in sequence, or writes them via the new

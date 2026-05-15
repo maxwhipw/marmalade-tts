@@ -179,6 +179,51 @@ class TestMatchaSynthesize:
         mock_dmgr.assert_called_once()
         assert mock_dmgr.call_args[0][0] == "matcha"
 
+    def test_steps_config_propagates_to_subprocess(self, tmp_path):
+        from marmalade_tts.engines.matcha import MatchaEngine
+        out_path = str(tmp_path / "out.wav")
+        fake_proc = MagicMock(returncode=0, stderr=b"")
+        with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+            MatchaEngine({"device": "cpu", "steps": 50}).synthesize("Hi", out_path)
+        cmd = mock_run.call_args[0][0]
+        assert "--steps" in cmd
+        assert cmd[cmd.index("--steps") + 1] == "50"
+
+    def test_temperature_config_propagates_to_subprocess(self, tmp_path):
+        from marmalade_tts.engines.matcha import MatchaEngine
+        out_path = str(tmp_path / "out.wav")
+        fake_proc = MagicMock(returncode=0, stderr=b"")
+        with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+            MatchaEngine({"device": "cpu", "temperature": 0.5}).synthesize("Hi", out_path)
+        cmd = mock_run.call_args[0][0]
+        assert "--temperature" in cmd
+        assert cmd[cmd.index("--temperature") + 1] == "0.5"
+
+    def test_no_steps_or_temperature_keeps_cmd_clean(self, tmp_path):
+        # When the user hasn't set these in config, the engine omits the
+        # flags entirely so the one-shot's own defaults apply.
+        from marmalade_tts.engines.matcha import MatchaEngine
+        out_path = str(tmp_path / "out.wav")
+        fake_proc = MagicMock(returncode=0, stderr=b"")
+        with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+            MatchaEngine({"device": "cpu"}).synthesize("Hi", out_path)
+        cmd = mock_run.call_args[0][0]
+        assert "--steps" not in cmd
+        assert "--temperature" not in cmd
+
+    def test_steps_propagates_to_daemon_request(self, tmp_path):
+        from marmalade_tts.engines.matcha import MatchaEngine
+        out_path = str(tmp_path / "out.wav")
+        with patch("marmalade_tts.engines.matcha.dmgr.synthesize") as mock_dmgr:
+            MatchaEngine({"device": "cpu", "daemon": True,
+                          "steps": 50, "temperature": 0.5}).synthesize("Hi", out_path)
+        request = mock_dmgr.call_args[0][1]
+        assert request["steps"] == 50
+        assert request["temperature"] == 0.5
+
     def test_missing_venv_exits(self, tmp_path):
         from marmalade_tts.engines.matcha import MatchaEngine
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=False):

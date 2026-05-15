@@ -46,6 +46,13 @@ class MatchaEngine(Engine):
         self.use_daemon = cfg.get("daemon", False)
         # Optional speaker id for multi-speaker models (matcha_vctk: 0-107).
         self.spk = cfg.get("spk")
+        # Quality knobs. `steps` (n_timesteps for matcha's ODE solver) is the
+        # main quality lever — default 10 (matcha-tts's own default, tuned
+        # for speed); 50 sounds noticeably better but takes 5x longer to
+        # synthesize. None means "use the engine venv's default" (whatever
+        # _matcha_synth.DEFAULT_STEPS / DEFAULT_TEMPERATURE are).
+        self.steps = cfg.get("steps")
+        self.temperature = cfg.get("temperature")
 
     def synthesize(self, text: str, out_path: str, voice: str = None,
                    speed: float = 1.0, speaker: str = None, **kwargs):
@@ -59,6 +66,10 @@ class MatchaEngine(Engine):
             request = {"text": text, "speed": speed, "out": out_path}
             if spk is not None:
                 request["spk"] = int(spk)
+            if self.steps is not None:
+                request["steps"] = int(self.steps)
+            if self.temperature is not None:
+                request["temperature"] = float(self.temperature)
             dmgr.synthesize("matcha", request, auto_start=True, timeout=120.0)
             return
 
@@ -95,6 +106,10 @@ class MatchaEngine(Engine):
         ]
         if spk is not None:
             cmd += ["--spk", str(int(spk))]
+        if self.steps is not None:
+            cmd += ["--steps", str(int(self.steps))]
+        if self.temperature is not None:
+            cmd += ["--temperature", str(float(self.temperature))]
 
         proc = subprocess.run(cmd, capture_output=True, env=env)
         if proc.returncode != 0:

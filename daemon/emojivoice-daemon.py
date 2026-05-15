@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """marmalade-tts emojivoice daemon — Matcha-TTS + EmojiVoice checkpoint in RAM.
 
-Request: {"text": "...", "spk": 103, "length_scale": 0.8, "out": "/tmp/x.wav"}
+Request: {"text": "...", "spk": 103, "length_scale": 0.8, "out": "/tmp/x.wav",
+          "steps": 10, "temperature": 0.667}
+  steps and temperature are optional; if omitted, _matcha_synth defaults
+  apply.
 
 The engine wrapper (marmalade_tts/engines/emojivoice.py) has already parsed
 the emoji -> speaker id and stripped the emoji from the text, so this daemon
@@ -35,13 +38,17 @@ def load_model():
 def synth(state, req):
     # The engine wrapper already computed the length scale (higher = slower);
     # the daemon uses it directly.
-    _matcha_synth.synth(
-        state,
-        text=req["text"],
-        out_path=req["out"],
-        spk=int(req.get("spk", 0)),
-        length_scale=float(req.get("length_scale", 0.8)),
-    )
+    kwargs = {
+        "text": req["text"],
+        "out_path": req["out"],
+        "spk": int(req.get("spk", 0)),
+        "length_scale": float(req.get("length_scale", 0.8)),
+    }
+    if "steps" in req:
+        kwargs["steps"] = int(req["steps"])
+    if "temperature" in req:
+        kwargs["temperature"] = float(req["temperature"])
+    _matcha_synth.synth(state, **kwargs)
 
 
 if __name__ == "__main__":
