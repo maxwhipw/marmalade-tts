@@ -21,25 +21,36 @@ BASE_DIR = os.path.expanduser("~/.local/share/marmalade-tts")
 
 # Engine → (socket filename, pid filename, systemd service name, daemon script)
 ENGINE_DAEMONS = {
-    "kitten": ("kitten.sock", "kitten.pid", "marmalade-kitten.service", "kitten-daemon.py"),
-    "kokoro": ("kokoro.sock", "kokoro.pid", "marmalade-kokoro.service", "kokoro-daemon.py"),
-    "piper":  ("piper.sock",  "piper.pid",  "marmalade-piper.service",  "piper-daemon.py"),
-    "coqui":  ("coqui.sock",  "coqui.pid",  "marmalade-coqui.service",  "coqui-daemon.py"),
+    "kitten":     ("kitten.sock", "kitten.pid", "marmalade-kitten.service", "kitten-daemon.py"),
+    "kokoro":     ("kokoro.sock", "kokoro.pid", "marmalade-kokoro.service", "kokoro-daemon.py"),
+    "piper":      ("piper.sock",  "piper.pid",  "marmalade-piper.service",  "piper-daemon.py"),
+    "coqui":      ("coqui.sock",  "coqui.pid",  "marmalade-coqui.service",  "coqui-daemon.py"),
+    "matcha":     ("matcha.sock", "matcha.pid", "marmalade-matcha.service", "matcha-daemon.py"),
+    "emojivoice": ("emojivoice.sock", "emojivoice.pid", "marmalade-emojivoice.service", "emojivoice-daemon.py"),
 }
 
-# Engine → Python interpreter to use for the daemon script (in order of preference)
+# Engine → Python interpreter to use for the daemon script.
+# Each engine lives in its own venv at ~/.local/share/<engine>-venv, created
+# by the installer (marmalade_tts/installer.py INSTALL_RECIPES). These paths
+# must stay in sync with the venv constants in each engine module.
 ENGINE_PYTHON = {
     "kitten": [
         os.path.expanduser("~/.local/share/kittentts-venv/bin/python"),
     ],
     "kokoro": [
-        os.path.expanduser("~/.local/share/pipx/venvs/kokoro/bin/python"),
+        os.path.expanduser("~/.local/share/kokoro-venv/bin/python"),
     ],
     "piper": [
-        os.path.expanduser("~/.local/share/pipx/venvs/piper-tts/bin/python"),
+        os.path.expanduser("~/.local/share/piper-venv/bin/python"),
     ],
     "coqui": [
-        os.path.expanduser("~/.local/share/pipx/venvs/coqui-tts/bin/python"),
+        os.path.expanduser("~/.local/share/coqui-venv/bin/python"),
+    ],
+    "matcha": [
+        os.path.expanduser("~/.local/share/matcha-tts-venv/bin/python"),
+    ],
+    "emojivoice": [
+        os.path.expanduser("~/.local/share/emojivoice-venv/bin/python"),
     ],
 }
 
@@ -169,6 +180,9 @@ def _start_direct(engine: str) -> bool:
         "piper":  {"PIPER_MODEL":  os.path.expanduser(
                        "~/.local/share/piper/voices/en_US-lessac-medium.onnx")},
         "coqui":  {"COQUI_MODEL":  "tts_models/en/ljspeech/tacotron2-DDC"},
+        "matcha": {"MATCHA_MODEL": "matcha_ljspeech"},
+        "emojivoice": {"EMOJIVOICE_CKPT": os.path.expanduser(
+                       "~/.local/share/emojivoice/models/emoji-hri-paige-inference.ckpt")},
     }
     env.update(env_overrides.get(engine, {}))
 

@@ -16,18 +16,24 @@ presets:
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
     pocket: alba      # fast: default voice
+    matcha: matcha_ljspeech
+    emojivoice: paige
   balanced:
     kitten: micro
     kokoro: af_heart
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
     pocket: fantine   # balanced: alternate voice
+    matcha: matcha_ljspeech
+    emojivoice: paige
   quality:
     kitten: mini
     kokoro: af_heart
     piper: en_US-lessac-medium
     coqui: tts_models/en/ljspeech/tacotron2-DDC
     pocket: cosette   # quality: another voice (pocket has no model-size variants)
+    matcha: matcha_ljspeech   # matcha has no model-size variants
+    emojivoice: paige
 
 engines:
   kitten:
@@ -58,6 +64,18 @@ engines:
     voice: alba
     # No daemon mode needed — Pocket TTS loads fast (~200ms)
     # Voice cloning: set voice to a .wav file path or .safetensors export
+
+  matcha:
+    device: cpu
+    model: matcha_ljspeech   # or matcha_vctk (multi-speaker), or a .ckpt path
+    daemon: false            # set true to keep the model in RAM (recommended)
+
+  emojivoice:
+    device: cpu
+    voice: paige             # EmojiVoice speaker checkpoint
+    daemon: false            # set true to keep the model in RAM (recommended)
+    # Emoji-controlled expressive TTS: an emoji in the text (🤣 😭 😡 …)
+    # selects the emotional style and is stripped before synthesis.
 
 # Audio effects — requires sox (apt install sox)
 # Custom presets combine built-in effects. Use --list-effects to see all options.

@@ -16,14 +16,18 @@ from .engines.kokoro import KokoroEngine, is_voice_token as kokoro_is_voice_toke
 from .engines.piper import PiperEngine
 from .engines.coqui import CoquiEngine
 from .engines.pocket import PocketEngine, VOICES as POCKET_VOICES
+from .engines.matcha import MatchaEngine
+from .engines.emojivoice import EmojiVoiceEngine, VOICES as EMOJIVOICE_VOICES
 from . import effects as fx
 
 ENGINE_CLASSES = {
-    "kitten": KittenEngine,
-    "kokoro": KokoroEngine,
-    "piper":  PiperEngine,
-    "coqui":  CoquiEngine,
-    "pocket": PocketEngine,
+    "kitten":     KittenEngine,
+    "kokoro":     KokoroEngine,
+    "piper":      PiperEngine,
+    "coqui":      CoquiEngine,
+    "pocket":     PocketEngine,
+    "matcha":     MatchaEngine,
+    "emojivoice": EmojiVoiceEngine,
 }
 
 ENGINE_NAMES = list(ENGINE_CLASSES.keys())
@@ -167,7 +171,14 @@ def cmd_init(args: list):
     parser.add_argument("--default-engine", type=str, default="",
                         help="Set the default engine explicitly")
     parser.add_argument("--test", action="store_true",
-                        help="Run a test synthesis after setup")
+                        help="Play a test synthesis through the default engine after setup")
+    parser.add_argument("--allow-sudo", action="store_true",
+                        help="permit system-package installs via sudo in "
+                             "non-interactive mode (interactive init always prompts)")
+    parser.add_argument("--reinstall", action="store_true",
+                        help="recreate engine venvs even if they already exist")
+    parser.add_argument("--skip-selftest", action="store_true",
+                        help="skip the post-install synthesis self-test")
     parsed = parser.parse_args(args)
 
     # ── Determine mode ──
@@ -215,23 +226,28 @@ def cmd_init(args: list):
     print(f"  ✓ Default engine: {default_engine}")
     print(f"  ✓ Engines configured: {', '.join(selected)}")
 
-    # ── Install hints ──
-    print()
-    for eng in selected:
-        if eng == "piper" and not engines_cfg.get(eng, {}).get("model"):
-            print("  📦 Piper needs a voice model. Download one:")
-            print("     mkdir -p ~/.local/share/piper/voices && cd ~/.local/share/piper/voices")
-            print("     wget <model-url>.onnx && wget <model-url>.onnx.json")
-            print("     See: https://huggingface.co/rhasspy/piper-voices")
-            print()
-        if eng == "kokoro":
-            print("  📦 Kokoro: install via  pipx install kokoro")
-            print()
-        if eng == "coqui" and not engines_cfg.get(eng, {}).get("model"):
-            print("  📦 Coqui: install via  pipx install coqui-tts")
-            print()
+    # ── Install the selected engines ──
+    # marmalade-tts owns the install: each engine gets its own venv, pip
+    # packages, system deps and models, then a self-test — the exact same
+    # code path as `marmalade-tts install`.
+    from . import installer
 
-    # ── Optional test synthesis ──
+    print()
+    print("  Installing engines — this downloads packages and models and may")
+    print("  take several minutes per engine.")
+    install_results = installer.install_engines(
+        selected,
+        allow_sudo=parsed.allow_sudo,
+        reinstall=parsed.reinstall,
+        skip_selftest=parsed.skip_selftest,
+        interactive=not non_interactive,
+    )
+    install_failed = any(
+        r["error"] or (r["selftest"] is not None and not r["selftest"][0])
+        for r in install_results
+    )
+
+    # ── Optional test synthesis (plays audio through the default engine) ──
     do_test = parsed.test
     if not non_interactive and not do_test:
         do_test = _ask_yn("  Run a test synthesis?", default=True)
@@ -258,11 +274,62 @@ def cmd_init(args: list):
 
     print("  🍊 Setup complete. Try: marmalade-tts \"Hello world\"\n")
 
-    # --test gates the exit code: if the user asked for a test and it failed,
-    # exit non-zero so CI scripts can detect the failure.
-    if parsed.test and test_failed:
+    # Exit non-zero if any engine failed to install / self-test, or if an
+    # explicitly-requested --test synthesis failed — so CI and setup scripts
+    # can detect the failure. The config is already saved either way.
+    if install_failed or (parsed.test and test_failed):
         sys.exit(1)
 
+
+def cmd_install(args: list):
+    """Handle `marmalade-tts install <engine>...`.
+
+    Installs each engine the hands-off way `init` does — its own venv, pip
+    packages, system deps, models — and self-tests it. `init` calls the same
+    installer under the hood; this command is for post-init additions.
+    """
+    import argparse as _ap
+
+    from . import installer
+    from .init import _is_tty
+
+    parser = _ap.ArgumentParser(
+        prog="marmalade-tts install", add_help=True,
+        description="Install TTS engines (venvs, packages, system deps, "
+                    "models) and self-test them.")
+    parser.add_argument("engines", nargs="+", metavar="ENGINE",
+                        help=f"engine(s) to install: "
+                             f"{', '.join(installer.INSTALL_RECIPES)}")
+    parser.add_argument("--allow-sudo", action="store_true",
+                        help="permit system-package installs via sudo in "
+                             "non-interactive mode (interactive mode always prompts)")
+    parser.add_argument("--reinstall", action="store_true",
+                        help="recreate the engine venv even if it already exists")
+    parser.add_argument("--skip-selftest", action="store_true",
+                        help="skip the post-install synthesis self-test")
+    parsed = parser.parse_args(args)
+
+    unknown = [e for e in parsed.engines if e not in installer.INSTALL_RECIPES]
+    if unknown:
+        print(f"[install] unknown engine(s): {', '.join(unknown)}\n"
+              f"  known: {', '.join(installer.INSTALL_RECIPES)}", file=sys.stderr)
+        sys.exit(1)
+
+    results = installer.install_engines(
+        parsed.engines,
+        allow_sudo=parsed.allow_sudo,
+        reinstall=parsed.reinstall,
+        skip_selftest=parsed.skip_selftest,
+        interactive=_is_tty(),
+    )
+    # Exit non-zero if any engine errored or failed its self-test, so scripts
+    # and CI can detect a bad install.
+    failed = any(
+        r["error"] or (r["selftest"] is not None and not r["selftest"][0])
+        for r in results
+    )
+    if failed:
+        sys.exit(1)
 
 
 # ── Voice/model heuristic ───────────────────────────────────────────────────
@@ -274,11 +341,12 @@ def looks_like_voice(engine: str, token: str) -> bool:
     Only engines whose voice names are unambiguously identifier-shaped
     (not English text, not file paths) accept positional voices:
 
-      - kitten:  closed list of names
-      - kokoro:  closed list of bare names AND canonical IDs
-      - pocket:  closed list of names, OR a .wav / .safetensors file path
+      - kitten:      closed list of names
+      - kokoro:      closed list of bare names AND canonical IDs
+      - pocket:      closed list of names, OR a .wav / .safetensors file path
+      - emojivoice:  closed list of speaker names
 
-    piper and coqui voices are file paths / model specs that are
+    piper, coqui and matcha voices are file paths / model specs that are
     structurally too similar to user text. Use ``--voice`` for those.
     """
     if engine == "kitten":
@@ -289,6 +357,8 @@ def looks_like_voice(engine: str, token: str) -> bool:
         return (token in POCKET_VOICES
                 or token.endswith(".wav")
                 or token.endswith(".safetensors"))
+    if engine == "emojivoice":
+        return token in EMOJIVOICE_VOICES
     return False
 
 
@@ -304,7 +374,7 @@ def _apply_preset(eng_cfg: dict, engine_name: str, preset_name: str, config: dic
         return
     if engine_name == "kitten":
         eng_cfg["model_size"] = preset_val
-    elif engine_name in ("kokoro", "pocket"):
+    elif engine_name in ("kokoro", "pocket", "emojivoice"):
         eng_cfg["voice"] = preset_val
     else:
         eng_cfg["model"] = preset_val
@@ -422,6 +492,9 @@ def main():
     if argv and argv[0] == "init":
         cmd_init(argv[1:])
         return
+    if argv and argv[0] == "install":
+        cmd_install(argv[1:])
+        return
     if argv and argv[0] == "--list-effects":
         config_tmp = cfg_mod.load()
         user_presets = config_tmp.get("effects", {}).get("presets", {})
@@ -440,7 +513,7 @@ def main():
     # ── Parse ──
     parser = argparse.ArgumentParser(
         prog="marmalade-tts",
-        description="🍊 Unified local TTS — kitten | kokoro | piper | coqui | pocket",
+        description="🍊 Unified local TTS — kitten | kokoro | piper | coqui | pocket | matcha | emojivoice",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
@@ -451,10 +524,14 @@ Examples:
   marmalade-tts pocket alba "Voice cloning ready"
   marmalade-tts pocket my_voice.wav "Cloned voice"  # pocket voice cloning
   marmalade-tts piper --voice ~/voices/foo.onnx "Hi"  # piper needs --voice
+  marmalade-tts matcha "Fast flow-matching TTS"
+  marmalade-tts emojivoice "I can't believe it 🤣"  # emoji sets the emotion
   marmalade-tts --fast "Quick test"              # fast preset
   marmalade-tts --no-preprocessing "$100 test"   # skip text normalization
   marmalade-tts config set defaults.engine kitten
   marmalade-tts daemon start
+  marmalade-tts init                             # set up + install engines
+  marmalade-tts install matcha emojivoice        # add engines after init
   eval "$(marmalade-tts --completion bash)"
 """,
     )

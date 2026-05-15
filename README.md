@@ -32,6 +32,15 @@ commands used to generate each one.
 
 ## Installation
 
+Installing marmalade-tts is two steps: install the **CLI** (tiny), then let
+it install the **engines** you want. `marmalade-tts init` does the engine
+install for you — see [Installing engines](#installing-engines) below.
+
+> **[uv](https://docs.astral.sh/uv/) is required.** The engine installer
+> uses it to manage per-engine Python versions and venvs. `pipx install`
+> pulls it in automatically; for the other install methods install uv with
+> `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+
 ### pipx (recommended for most users)
 
 ```sh
@@ -45,10 +54,10 @@ Download the latest `.deb` or `.rpm` from the [GitHub releases page](https://git
 
 ```sh
 # Debian/Ubuntu
-sudo dpkg -i marmalade-tts_0.4.4_amd64.deb
+sudo dpkg -i marmalade-tts_0.5.0_amd64.deb
 
 # Fedora/RHEL
-sudo rpm -i marmalade-tts-0.4.4-1.x86_64.rpm
+sudo rpm -i marmalade-tts-0.5.0-1.x86_64.rpm
 ```
 
 ### AUR (Arch Linux) — coming soon
@@ -71,7 +80,31 @@ cd marmalade-tts
 marmalade-tts init
 ```
 
-See `INSTALL.md` for per-engine dependencies (pip packages, models).
+---
+
+## Installing engines
+
+**marmalade-tts owns the engine install.** You don't `pip install` engines
+yourself — `marmalade-tts init` and `marmalade-tts install <engine>` do it
+hands-off: each engine gets its own [uv](https://docs.astral.sh/uv/)-managed
+venv, its packages, any system dependencies (e.g. `espeak-ng`, installed via
+your distro's package manager with an explicit sudo prompt), and its models.
+Each engine is then **self-tested** — marmalade-tts synthesizes a phrase
+through the exact code path the CLI uses and confirms a valid WAV comes out.
+
+```sh
+# init installs whatever engines you select in the wizard
+marmalade-tts init
+
+# install adds engines after the fact (init uses this same code path)
+marmalade-tts install matcha emojivoice
+marmalade-tts install kokoro --allow-sudo     # non-interactive sudo for system deps
+marmalade-tts install piper --reinstall       # recreate the venv from scratch
+```
+
+Engine venvs live at `~/.local/share/<engine>-venv`. The manual,
+under-the-hood steps are documented in `INSTALL.md` as a fallback — but
+`init` / `install` is the supported path.
 
 ---
 
@@ -84,9 +117,13 @@ See `INSTALL.md` for per-engine dependencies (pip packages, models).
 | **piper** | Offline neural TTS, many voices | optional |
 | **coqui** | Open-source neural TTS toolkit | optional |
 | **pocket** | CPU-only 100M-param TTS with voice cloning | n/a (loads in ~200 ms) |
+| **matcha** | Fast flow-matching neural TTS, clear English | optional |
+| **emojivoice** | Emoji-controlled expressive TTS — 🤣😭😡 in the text set the emotion | optional |
 
-Install the engines you want — marmalade-tts works with whichever are present.
-(There's no need to install all five — even just one engine is enough to be useful.)
+Install the engines you want with `marmalade-tts install <engine>` (or pick
+them in `marmalade-tts init`) — marmalade-tts works with whichever are
+present. There's no need to install all of them; even just one is enough to
+be useful.
 
 ---
 
@@ -206,6 +243,39 @@ marmalade-tts pocket friend.safetensors "Hi!"
 > Cloning a real person's voice without permission — to deceive, impersonate,
 > harass, or misrepresent them — is harmful and in many jurisdictions illegal.
 > The built-in voices are fine for any use.
+
+### matcha
+
+```sh
+marmalade-tts matcha "Fast flow-matching neural TTS"
+marmalade-tts matcha "Multi-speaker model" --voice matcha_vctk --speaker 5
+marmalade-tts matcha --list
+```
+
+Matcha-TTS is a fast flow-matching neural TTS. Two built-in models
+auto-download on first use: `matcha_ljspeech` (single female speaker,
+default) and `matcha_vctk` (multi-speaker — pick one with `--speaker N`,
+0–107). A custom checkpoint path also works via `--voice`.
+`marmalade-tts install matcha` sets it up — its own Python 3.11 venv and
+`espeak-ng`.
+
+### emojivoice
+
+```sh
+marmalade-tts emojivoice "I can't believe it 🤣"
+marmalade-tts emojivoice "That's so sad 😭"
+marmalade-tts emojivoice --list                  # show the emoji set
+```
+
+EmojiVoice is an expressive TTS where an **emoji in the text selects the
+emotional speaking style** — `🤣` reads amused, `😭` reads sad, `😡` reads
+angry, and so on. The emoji can sit anywhere in the text; it sets the
+tone and is stripped before synthesis (it is not spoken). Text with no
+recognized emoji is read in a neutral style.
+
+Built on Matcha-TTS, in its own Python 3.11 venv. `marmalade-tts install
+emojivoice` sets everything up — the venv, `espeak-ng`, and the `paige`
+speaker checkpoint.
 
 ---
 
@@ -386,8 +456,9 @@ systemctl --user start  marmalade-kitten
 
 ### `marmalade-tts init`
 
-The setup wizard configures engines, voices, and defaults.
-Run it again at any time to change your setup.
+The setup wizard configures engines, voices, and defaults — **and installs
+the selected engines** (venvs, packages, system deps, models) and
+self-tests each one. Run it again at any time to change your setup.
 
 **Interactive mode** (default when stdin is a TTY):
 ```sh
@@ -409,7 +480,28 @@ Flags:
 - `--engines LIST` — comma-separated engines to enable
 - `--set ENGINE.KEY=VALUE` — override engine options (repeatable)
 - `--default-engine NAME` — set the default engine
-- `--test` — run a test synthesis after setup
+- `--test` — play a test synthesis through the default engine after setup
+- `--allow-sudo` — permit system-package installs via sudo in non-interactive
+  mode (interactive init always prompts before any sudo command)
+- `--reinstall` — recreate engine venvs even if they already exist
+- `--skip-selftest` — skip the post-install synthesis self-test
+
+### `marmalade-tts install`
+
+Adds engines after `init`, using the exact same installer code path. Each
+engine gets its own venv, packages, system deps, and models, then a
+self-test.
+
+```sh
+marmalade-tts install matcha                  # one engine
+marmalade-tts install kokoro piper coqui       # several at once
+marmalade-tts install emojivoice --allow-sudo  # non-interactive sudo for system deps
+marmalade-tts install kitten --reinstall       # recreate the venv
+marmalade-tts install matcha --skip-selftest   # skip the post-install self-test
+```
+
+Exits non-zero if any engine fails to install or fails its self-test, so
+scripts and CI can detect a bad install.
 
 ### Manual config
 
@@ -492,6 +584,16 @@ engines:
     voice: alba         # built-in voice, or path to .wav / .safetensors
     # No daemon needed — Pocket TTS loads fast (~200ms)
 
+  matcha:
+    device: cpu
+    model: matcha_ljspeech   # matcha_vctk, or a .ckpt path
+    daemon: false            # true keeps the model in RAM (recommended)
+
+  emojivoice:
+    device: cpu
+    voice: paige             # EmojiVoice speaker checkpoint
+    daemon: false            # true keeps the model in RAM (recommended)
+
 effects:
   defaults:
     kitten: []
@@ -570,7 +672,7 @@ aplay "$WAV"
 
 # JSON result for structured consumption
 marmalade-tts --json --no-play "Hello"
-# → {"ok": true, "version": "0.4.4", "engine": "kitten", "voice": "Kiki",
+# → {"ok": true, "version": "0.5.0", "engine": "kitten", "voice": "Kiki",
 #    "out": "/tmp/...", "effects": [], "text": "Hello"}
 
 # Never play back, just generate
@@ -613,7 +715,12 @@ marmalade-tts @script.txt --out script.wav
 - **OS:** Linux (primary target, tested on Ubuntu 24.04). macOS untested but
   most engines (`piper`, `kokoro`, `pocket`, `coqui`) should work. Windows is
   not supported.
-- **Python:** 3.10 or newer.
+- **Python:** 3.10 or newer for the CLI. The engine installer uses
+  [uv](https://docs.astral.sh/uv/) to provision per-engine venvs — including
+  Python 3.11 for `matcha` / `emojivoice`, which don't build on 3.12.
+- **[uv](https://docs.astral.sh/uv/):** required for installing engines.
+  `pipx install marmalade-tts` pulls it in; otherwise:
+  `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 - **CPU-only by default.** All engines run on CPU; no GPU needed. Optional
   CUDA acceleration for kokoro/coqui on supported NVIDIA cards.
 - **RAM:** ~200 MB for kitten/pocket, ~1.5 GB for kokoro daemon, varies for
@@ -649,7 +756,7 @@ and ships in the next minor version bump.
 
 ## Stability & versioning
 
-marmalade-tts is currently in **beta** (`0.4.x`). The CLI surface,
+marmalade-tts is currently in **beta** (`0.5.x`). The CLI surface,
 config schema, and JSON output are usable today and the project tries
 hard not to break working commands, but small changes between minor
 versions are still possible until **v1.0.0**.
@@ -688,12 +795,11 @@ configured default. Per-language defaults configurable in `config.yaml`.
 
 ### Emoji-driven emotional prosody
 
-Treat emojis as inline prosody directives — e.g. `"Hello 🙂"` reads
-warm, `"Hello 😢"` reads sad, `"Hello! ⚡"` reads energetic. Requires
-upstream model support for emotion conditioning that runs close to
-real-time on consumer hardware (CPU or modest GPU), with a FOSS
-licence. Will track FOSS expressive-TTS research and integrate when the
-stack exists.
+The **emojivoice** engine delivers the first cut of this: an emoji in
+the text selects the emotional speaking style. Future directions —
+a shared emoji→emotion layer that maps onto *any* expression-capable
+engine, more EmojiVoice speakers, and a wider emoji vocabulary — are
+tracked alongside FOSS expressive-TTS research.
 
 ---
 
@@ -706,8 +812,11 @@ marmalade-tts is a unified wrapper — the real work is done by these engines:
 - **[KittenTTS](https://github.com/KittenML/KittenTTS)** — fast lightweight neural TTS by KittenML (Apache 2.0)
 - **[Coqui TTS](https://github.com/coqui-ai/TTS)** — open-source TTS toolkit by Coqui AI (MPL 2.0)
 - **[Pocket TTS](https://github.com/kyutai-labs/pocket-tts)** — CPU-only 100M param TTS with voice cloning by Kyutai Labs (MIT)
+- **[Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS)** — fast flow-matching neural TTS by Shivam Mehta et al. (MIT)
+- **[EmojiVoice](https://github.com/rosielab/emojivoice)** — emoji-controlled expressive TTS by Tuttösi et al., SFU Rosie Lab (MIT code; runs on Matcha-TTS)
 - **[sox](https://sox.sourceforge.net/)** — audio effects processing (GPL)
 - **[num2words](https://github.com/savoirfairelinux/num2words)** — number-to-words conversion (LGPL)
+- **[espeak-ng](https://github.com/espeak-ng/espeak-ng)** — phonemizer backend for piper / matcha / emojivoice (GPL; invoked as a separate system package, not bundled)
 
 The Docker HTTP API server implements endpoints compatible with the
 [OpenAI TTS API](https://platform.openai.com/docs/api-reference/audio/createSpeech)

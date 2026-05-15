@@ -5,35 +5,42 @@ voice cloning via wav files. English only.
 
 Built-in voices: alba, marius, javert, jean, fantine, cosette, eponine, azelma
 
+marmalade-tts owns the install: pocket-tts lives in its own venv and is
+invoked as a subprocess by explicit path. pocket-tts has no CLI entrypoint,
+so the venv's python runs a short inline script. Calling into the venv
+explicitly — rather than importing pocket_tts in-process — keeps pocket's
+heavy torch dependency out of marmalade-tts's own environment and lets the
+hands-off installer self-test the engine exactly the way the CLI runs it.
+
 Install:
-  pip install pocket-tts
+  marmalade-tts install pocket
 """
 
 import os
+import subprocess
 import sys
 
 from . import Engine
 
 VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
-# Cache the model and voice states to avoid reloading on every call.
-_model = None
-_voice_states = {}
+POCKET_VENV = os.path.expanduser("~/.local/share/pocket-tts-venv")
+POCKET_PYTHON = os.path.join(POCKET_VENV, "bin", "python")
 
+# Inline script run inside the pocket-tts venv. Loads the model, resolves the
+# voice (built-in name, .wav path, or .safetensors export), synthesizes, and
+# writes a WAV. Args: <text> <out_path> <voice>.
+_SYNTH_SCRIPT = """\
+import sys
+import scipy.io.wavfile
+from pocket_tts import TTSModel
 
-def _get_model():
-    global _model
-    if _model is None:
-        from pocket_tts import TTSModel
-        _model = TTSModel.load_model()
-    return _model
-
-
-def _get_voice_state(model, voice: str):
-    """Get or cache a voice state. Supports built-in names, .wav paths, and .safetensors."""
-    if voice not in _voice_states:
-        _voice_states[voice] = model.get_state_for_audio_prompt(voice)
-    return _voice_states[voice]
+text, out_path, voice = sys.argv[1], sys.argv[2], sys.argv[3]
+model = TTSModel.load_model()
+state = model.get_state_for_audio_prompt(voice)
+audio = model.generate_audio(state, text)
+scipy.io.wavfile.write(out_path, model.sample_rate, audio.numpy())
+"""
 
 
 class PocketEngine(Engine):
@@ -47,21 +54,22 @@ class PocketEngine(Engine):
 
     def synthesize(self, text: str, out_path: str, voice: str = None,
                    speed: float = 1.0, **kwargs):
-        try:
-            import scipy.io.wavfile
-        except ImportError:
+        if not os.path.exists(POCKET_PYTHON):
             sys.exit(
-                "[pocket] scipy is required for the pocket engine.\n"
-                "  Install with: pip install 'marmalade-tts[pocket]'\n"
-                "  or directly:  pip install scipy"
+                f"[pocket] pocket-tts venv not found at {POCKET_VENV}\n"
+                f"  Run: marmalade-tts install pocket"
             )
+        # Built-in voice names pass through unchanged; ~ in a cloning path
+        # (.wav / .safetensors) is expanded.
+        v = os.path.expanduser(voice or self.voice)
 
-        model = _get_model()
-        v = voice or self.voice
-        state = _get_voice_state(model, v)
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = ""
 
-        audio = model.generate_audio(state, text)
-        scipy.io.wavfile.write(out_path, model.sample_rate, audio.numpy())
+        cmd = [POCKET_PYTHON, "-c", _SYNTH_SCRIPT, text, out_path, v]
+        proc = subprocess.run(cmd, capture_output=True, env=env)
+        if proc.returncode != 0:
+            sys.exit(f"[pocket] synthesis failed:\n{proc.stderr.decode(errors='replace')}")
 
     def list_voices(self):
         print("Pocket TTS voices (built-in):")

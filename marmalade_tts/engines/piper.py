@@ -9,6 +9,13 @@ from .. import daemon as dmgr
 
 PIPER_VOICES_DIR = os.path.expanduser("~/.local/share/piper/voices")
 
+# marmalade-tts owns the install: piper lives in its own venv and is
+# invoked by explicit path, never via $PATH. An explicit venv path makes
+# a working install unambiguous and lets the hands-off installer
+# self-test the engine exactly the way the CLI runs it.
+PIPER_VENV = os.path.expanduser("~/.local/share/piper-venv")
+PIPER_BIN = os.path.join(PIPER_VENV, "bin", "piper")
+
 
 class PiperEngine(Engine):
     name = "piper"
@@ -38,6 +45,12 @@ class PiperEngine(Engine):
             return
 
         # Subprocess fallback
+        if not os.path.exists(PIPER_BIN):
+            sys.exit(
+                f"[piper] piper venv not found at {PIPER_VENV}\n"
+                f"  Run: marmalade-tts install piper"
+            )
+
         m = model or self._find_model()
         if not m:
             sys.exit(
@@ -49,7 +62,7 @@ class PiperEngine(Engine):
                 "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
             )
 
-        cmd = ["piper", "--model", m, "--output-file", out_path]
+        cmd = [PIPER_BIN, "--model", m, "--output-file", out_path]
         if speed and speed != 1.0:
             cmd += ["--length-scale", str(1.0 / speed)]
         if speaker is not None:

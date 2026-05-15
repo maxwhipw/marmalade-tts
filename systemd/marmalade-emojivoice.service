@@ -1,0 +1,14 @@
+[Unit]
+Description=Marmalade TTS — EmojiVoice model daemon (kept in RAM)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/emojivoice-venv/bin/python \
+    %h/.local/share/marmalade-tts/daemon/emojivoice-daemon.py
+Restart=on-failure
+RestartSec=5
+Environment=EMOJIVOICE_CKPT=%h/.local/share/emojivoice/models/emoji-hri-paige-inference.ckpt
+
+[Install]
+WantedBy=default.target

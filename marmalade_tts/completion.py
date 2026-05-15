@@ -4,14 +4,16 @@ from .effects import EFFECTS, BUILTIN_PRESETS
 from .engines.kitten import VOICES as KITTEN_VOICES
 from .engines.kokoro import VOICE_ALIASES as _KOKORO_ALIASES
 from .engines.pocket import VOICES as POCKET_VOICES
+from .engines.emojivoice import VOICES as EMOJIVOICE_VOICES
 
 # Engine names for completion
-ENGINES = ["kitten", "kokoro", "piper", "coqui", "pocket"]
+ENGINES = ["kitten", "kokoro", "piper", "coqui", "pocket", "matcha", "emojivoice"]
 # Bare names first (primary), canonical IDs after (long form, also accepted).
 KOKORO_VOICES = list(_KOKORO_ALIASES.keys()) + list(_KOKORO_ALIASES.values())
-SUBCOMMANDS = ["config", "daemon", "init"]
+SUBCOMMANDS = ["config", "daemon", "init", "install"]
 CONFIG_ACTIONS = ["show", "get", "set"]
 DAEMON_ACTIONS = ["start", "stop", "status", "start-all", "stop-all"]
+INSTALL_FLAGS = ["--allow-sudo", "--reinstall", "--skip-selftest"]
 CONFIG_PATHS = [
     "defaults.engine", "defaults.device", "defaults.speed", "defaults.play",
     "defaults.preprocessing",
@@ -22,12 +24,17 @@ CONFIG_PATHS = [
     "engines.piper.model", "engines.piper.device", "engines.piper.daemon",
     "engines.coqui.model", "engines.coqui.device", "engines.coqui.daemon",
     "engines.pocket.voice", "engines.pocket.device",
+    "engines.matcha.model", "engines.matcha.device", "engines.matcha.daemon",
+    "engines.emojivoice.voice", "engines.emojivoice.device", "engines.emojivoice.daemon",
     "presets.fast.kitten", "presets.fast.kokoro", "presets.fast.piper",
-    "presets.fast.coqui", "presets.fast.pocket",
+    "presets.fast.coqui", "presets.fast.pocket", "presets.fast.matcha",
+    "presets.fast.emojivoice",
     "presets.balanced.kitten", "presets.balanced.kokoro", "presets.balanced.piper",
-    "presets.balanced.coqui", "presets.balanced.pocket",
+    "presets.balanced.coqui", "presets.balanced.pocket", "presets.balanced.matcha",
+    "presets.balanced.emojivoice",
     "presets.quality.kitten", "presets.quality.kokoro", "presets.quality.piper",
-    "presets.quality.coqui", "presets.quality.pocket",
+    "presets.quality.coqui", "presets.quality.pocket", "presets.quality.matcha",
+    "presets.quality.emojivoice",
 ]
 EFFECT_NAMES = list(EFFECTS.keys()) + list(BUILTIN_PRESETS.keys())
 
@@ -37,9 +44,11 @@ def bash_completion() -> str:
     kitten_voices = " ".join(KITTEN_VOICES)
     kokoro_voices = " ".join(KOKORO_VOICES)
     pocket_voices = " ".join(POCKET_VOICES)
+    emojivoice_voices = " ".join(EMOJIVOICE_VOICES)
     subcommands = " ".join(SUBCOMMANDS)
     config_actions = " ".join(CONFIG_ACTIONS)
     daemon_actions = " ".join(DAEMON_ACTIONS)
+    install_flags = " ".join(INSTALL_FLAGS)
     config_paths = " ".join(CONFIG_PATHS)
     effect_names = " ".join(EFFECT_NAMES)
 
@@ -55,8 +64,10 @@ _marmalade_tts() {{
     local kitten_voices="{kitten_voices}"
     local kokoro_voices="{kokoro_voices}"
     local pocket_voices="{pocket_voices}"
+    local emojivoice_voices="{emojivoice_voices}"
     local config_actions="{config_actions}"
     local daemon_actions="{daemon_actions}"
+    local install_flags="{install_flags}"
     local config_paths="{config_paths}"
     local effect_names="{effect_names}"
     local flags="--out --play --no-play --speed --voice --lang --speaker \\
@@ -92,16 +103,23 @@ _marmalade_tts() {{
         return
     fi
 
+    # Install subcommand — engine names (repeatable) and install flags
+    if [[ "${{words[1]}}" == "install" ]]; then
+        COMPREPLY=( $(compgen -W "$engines $install_flags" -- "$cur") )
+        return
+    fi
+
     # Second positional after engine: voice name.
     # Only kitten/kokoro/pocket accept a positional voice — for those,
     # complete from the voice list. piper/coqui require --voice, so the
     # second positional there is text; offer flags instead.
     if [[ $cword -eq 2 ]]; then
         case "${{words[1]}}" in
-            kitten) COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
-            kokoro) COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
-            pocket) COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
-            *)      COMPREPLY=( $(compgen -W "$flags" -- "$cur") ) ;;
+            kitten)     COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
+            kokoro)     COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
+            pocket)     COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
+            emojivoice) COMPREPLY=( $(compgen -W "$emojivoice_voices" -- "$cur") ) ;;
+            *)          COMPREPLY=( $(compgen -W "$flags" -- "$cur") ) ;;
         esac
         return
     fi
@@ -118,10 +136,11 @@ _marmalade_tts() {{
     # coqui: voices are tts_models/... specs — no practical completion.
     if [[ "$prev" == "--voice" ]]; then
         case "${{words[1]}}" in
-            kitten) COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
-            kokoro) COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
-            pocket) COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
-            piper)  _filedir onnx ;;
+            kitten)     COMPREPLY=( $(compgen -W "$kitten_voices" -- "$cur") ) ;;
+            kokoro)     COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
+            pocket)     COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
+            emojivoice) COMPREPLY=( $(compgen -W "$emojivoice_voices" -- "$cur") ) ;;
+            piper)      _filedir onnx ;;
         esac
         return
     fi
@@ -154,6 +173,7 @@ def zsh_completion() -> str:
     kitten_voices = " ".join(KITTEN_VOICES)
     kokoro_voices = " ".join(KOKORO_VOICES)
     pocket_voices = " ".join(POCKET_VOICES)
+    emojivoice_voices = " ".join(EMOJIVOICE_VOICES)
     effect_names = " ".join(EFFECT_NAMES)
 
     return f'''#compdef marmalade-tts
@@ -163,21 +183,23 @@ def zsh_completion() -> str:
 _marmalade-tts() {{
     local curcontext="$curcontext" state line
     local -a engines=({engines})
-    local -a subcommands=(config daemon init)
+    local -a subcommands=(config daemon init install)
     local -a kitten_voices=({kitten_voices})
     local -a kokoro_voices=({kokoro_voices})
     local -a pocket_voices=({pocket_voices})
+    local -a emojivoice_voices=({emojivoice_voices})
     local -a effect_names=({effect_names})
 
     # Engine-aware voice completion, shared by the positional voice slot
     # and the --voice flag. Reads $words[2] (the engine) to decide.
     _marmalade_voices() {{
         case "${{words[2]}}" in
-            kitten) _values 'kitten voice' $kitten_voices ;;
-            kokoro) _values 'kokoro voice' $kokoro_voices ;;
-            pocket) _values 'pocket voice' $pocket_voices ;;
-            piper)  _files -g '*.onnx' ;;
-            *) ;;  # coqui: tts_models/... specs — no practical completion
+            kitten)     _values 'kitten voice' $kitten_voices ;;
+            kokoro)     _values 'kokoro voice' $kokoro_voices ;;
+            pocket)     _values 'pocket voice' $pocket_voices ;;
+            emojivoice) _values 'emojivoice speaker' $emojivoice_voices ;;
+            piper)      _files -g '*.onnx' ;;
+            *) ;;  # coqui / matcha: model specs — no practical completion
         esac
     }}
 

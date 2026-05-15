@@ -15,7 +15,7 @@ import marmalade_tts.daemon as daemon_mod
 
 class TestPaths:
     def test_all_engines_have_paths(self):
-        for engine in ["kitten", "kokoro", "piper", "coqui"]:
+        for engine in ["kitten", "kokoro", "piper", "coqui", "matcha", "emojivoice"]:
             sock, pid, svc, script = daemon_mod._paths(engine)
             assert sock.endswith(".sock")
             assert pid.endswith(".pid")
@@ -24,13 +24,13 @@ class TestPaths:
 
     def test_paths_runtime_files_under_base_dir(self):
         base = daemon_mod.BASE_DIR
-        for engine in ["kitten", "kokoro", "piper", "coqui"]:
+        for engine in ["kitten", "kokoro", "piper", "coqui", "matcha", "emojivoice"]:
             sock, pid, _svc, _script = daemon_mod._paths(engine)
             assert sock.startswith(base)
             assert pid.startswith(base)
 
     def test_script_path_ends_in_daemon_py(self):
-        for engine in ["kitten", "kokoro", "piper", "coqui"]:
+        for engine in ["kitten", "kokoro", "piper", "coqui", "matcha", "emojivoice"]:
             _sock, _pid, _svc, script = daemon_mod._paths(engine)
             assert script.endswith("-daemon.py")
 
@@ -141,7 +141,7 @@ class TestStatus:
     def test_all_engines_returned(self, tmp_path):
         with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
             result = daemon_mod.status()
-        assert set(result.keys()) == {"kitten", "kokoro", "piper", "coqui"}
+        assert set(result.keys()) == set(daemon_mod.ENGINE_DAEMONS.keys())
 
     def test_single_engine(self, tmp_path):
         with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):

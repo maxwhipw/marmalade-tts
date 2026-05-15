@@ -14,6 +14,16 @@ from marmalade_tts.init import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _mock_installer():
+    """`init` now installs the selected engines via installer.install_engines.
+    Stub it out everywhere so init tests exercise config writing, not real
+    venv creation / downloads. The installer itself is covered by
+    test_installer.py."""
+    with patch("marmalade_tts.installer.install_engines", return_value=[]) as m:
+        yield m
+
+
 # ── Non-interactive path ─────────────────────────────────────────────────────
 
 class TestNonInteractive:
@@ -67,11 +77,19 @@ class TestNonInteractive:
 
     def test_all_engines(self):
         result = init_non_interactive(ENGINE_ORDER)
-        assert len(result) == 5
+        assert len(result) == len(ENGINE_ORDER)
         for eng in ENGINE_ORDER:
             assert eng in result
             assert "daemon" in result[eng]
             assert "device" in result[eng]
+
+    def test_matcha_default_model(self):
+        result = init_non_interactive(["matcha"])
+        assert result["matcha"]["model"] == "matcha_ljspeech"
+
+    def test_emojivoice_default_voice(self):
+        result = init_non_interactive(["emojivoice"])
+        assert result["emojivoice"]["voice"] == "paige"
 
     def test_piper_has_empty_model_default(self):
         result = init_non_interactive(["piper"])

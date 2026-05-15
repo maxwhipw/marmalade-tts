@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/share/pipx/venvs/coqui-tts/bin/python \
+ExecStart=%h/.local/share/coqui-venv/bin/python \
     %h/.local/share/marmalade-tts/daemon/coqui-daemon.py
 Restart=on-failure
 RestartSec=5

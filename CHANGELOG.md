@@ -5,7 +5,35 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-14
+
+Hands-off engine installation, and two new expressive engines.
+
+### Added
+- **`matcha` and `emojivoice` engines.** Matcha-TTS is a fast
+  flow-matching neural TTS; EmojiVoice runs on Matcha-TTS and lets an
+  emoji in the text select the emotional speaking style (`🤣` amused,
+  `😭` sad, `😡` angry, …). Both have daemon + systemd support.
+- **Hands-off engine installer.** `marmalade-tts init` now *installs* the
+  engines you select — venvs, packages, system dependencies, and models —
+  instead of just printing hints. A new `marmalade-tts install <engine>…`
+  command does the same for post-init additions (`init` uses it under the
+  hood). Each engine is self-tested after install: marmalade-tts
+  synthesizes a phrase through the real CLI code path and asserts a valid
+  WAV. Flags: `--allow-sudo`, `--reinstall`, `--skip-selftest`.
+- **`marmalade_tts/models.json`** — model manifest with redundant download
+  sources and sha256 verification, consumed by the installer.
+
 ### Changed
+- **uv is now a hard dependency.** The installer uses it to provision
+  per-engine Python versions and venvs cross-distro (matcha / emojivoice
+  require Python 3.11 — matcha-tts does not build on 3.12).
+- **Every engine now lives in its own venv at `~/.local/share/<engine>-venv`
+  and is invoked by explicit path.** kokoro/coqui/piper previously called a
+  bare command from `$PATH`; pocket imported `pocket-tts` in-process. All
+  now call into their own venv explicitly — uniform, and the installer's
+  self-test exercises the exact path the CLI uses. The kokoro/piper/coqui
+  venvs moved off the old `~/.local/share/pipx/venvs/...` locations.
 - **Tab completion is now engine-aware for voices everywhere it can be.**
   - bash: `piper --voice <TAB>` now completes `.onnx` file paths instead
     of nothing.
@@ -14,6 +42,7 @@ This project follows [Semantic Versioning](https://semver.org/).
     engine-aware (was lumping every engine's voices together), and piper
     gets `.onnx` file completion.
   - bash flag list gained `--no-effects`, `-q`, `--help`, `-h`.
+  - the `install` subcommand and its flags are completed too.
   - coqui voices (`tts_models/...` specs) remain uncompletable by design —
     enumerating them requires loading the whole coqui stack.
 

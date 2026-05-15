@@ -25,6 +25,14 @@ import sys
 from . import Engine
 from .. import daemon as dmgr
 
+# marmalade-tts owns the install: kokoro lives in its own venv and is
+# invoked by explicit path, never via $PATH. A bare `kokoro` lookup would
+# silently "work" against an unrelated install (or fail confusingly) — an
+# explicit venv path makes a working install unambiguous and lets the
+# hands-off installer self-test the engine exactly the way the CLI runs it.
+KOKORO_VENV = os.path.expanduser("~/.local/share/kokoro-venv")
+KOKORO_BIN = os.path.join(KOKORO_VENV, "bin", "kokoro")
+
 
 # Bare name → canonical kokoro voice ID. Bare names are unique across
 # languages today; if upstream adds a name that collides, the canonical
@@ -134,12 +142,18 @@ class KokoroEngine(Engine):
             return
 
         # Subprocess fallback
+        if not os.path.exists(KOKORO_BIN):
+            sys.exit(
+                f"[kokoro] kokoro venv not found at {KOKORO_VENV}\n"
+                f"  Run: marmalade-tts install kokoro"
+            )
+
         env = os.environ.copy()
         if self.device == "cpu":
             env["CUDA_VISIBLE_DEVICES"] = ""
         env["HF_HUB_OFFLINE"] = "1"
 
-        cmd = ["kokoro", "--voice", v, "--output-file", out_path, "--text", text]
+        cmd = [KOKORO_BIN, "--voice", v, "--output-file", out_path, "--text", text]
         if la:
             cmd += ["--language", la]
         if speed and speed != 1.0:

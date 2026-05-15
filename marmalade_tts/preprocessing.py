@@ -276,6 +276,20 @@ ENGINE_PROFILES = {
         "email", "url", "filename", "abbreviation", "number",
         "math", "ampersand", "hashtag",
     ],
+    "matcha": [
+        # Matcha-TTS only phonemizes — it normalizes nothing, so apply everything.
+        "currency", "percentage", "ordinal", "time", "date",
+        "email", "url", "filename", "abbreviation", "number",
+        "math", "ampersand", "hashtag",
+    ],
+    "emojivoice": [
+        # EmojiVoice runs on Matcha-TTS — also no native normalization.
+        # Note: these rules never touch emoji characters, so the emotion
+        # emoji survives preprocessing and is consumed by the engine.
+        "currency", "percentage", "ordinal", "time", "date",
+        "email", "url", "filename", "abbreviation", "number",
+        "math", "ampersand", "hashtag",
+    ],
 }
 
 

@@ -183,23 +183,27 @@ If daemon is disabled (`daemon: false`), falls back to subprocess (slow cold sta
 
 ### Kokoro
 
-Subprocess call to `kokoro` CLI (pipx venv). Must set `CUDA_VISIBLE_DEVICES=""`
-when device=cpu. Also sets `HF_HUB_OFFLINE=1` to avoid network hits after first cache.
+Subprocess call to the `kokoro` CLI in the engine's own venv
+(`~/.local/share/kokoro-venv`). Must set `CUDA_VISIBLE_DEVICES=""` when
+device=cpu. Also sets `HF_HUB_OFFLINE=1` to avoid network hits after first cache.
 
 ### Piper
 
-Subprocess call to `piper` CLI. Text fed via stdin. Speed is inverted
-(`--length-scale` = 1/speed). Always CPU (ONNX runtime).
+Subprocess call to the `piper` CLI in the engine's own venv
+(`~/.local/share/piper-venv`). Speed is inverted (`--length-scale` = 1/speed).
+Always CPU (ONNX runtime).
 
 ### Coqui
 
-Subprocess call to `tts` CLI (pipx venv, patched for transformers compat).
-Must set `CUDA_VISIBLE_DEVICES=""` when device=cpu.
+Subprocess call to the `tts` CLI in the engine's own venv
+(`~/.local/share/coqui-venv`). Must set `CUDA_VISIBLE_DEVICES=""` when device=cpu.
 
 ### Pocket
 
-Runs **in-process** (not a subprocess). The `pocket-tts` package is imported
-directly at synthesis time. The model loads in ~200ms, so no daemon is needed.
+Subprocess call into the engine's own venv (`~/.local/share/pocket-tts-venv`):
+the venv's Python runs a short inline script that imports `pocket-tts`. This
+keeps pocket's heavy torch dependency out of marmalade-tts's own environment.
+The model loads in ~200ms, so no daemon is needed.
 
 Voice options:
 - Built-in names: `alba`, `marius`, `javert`, `jean`, `fantine`, `cosette`, `eponine`, `azelma`
@@ -215,8 +219,10 @@ Model weight (~200MB) is auto-downloaded from HuggingFace on first use.
   modern, compatible GPUs.
 - **HuggingFace cache:** Models cached in `~/.cache/huggingface/hub/`. First run
   downloads; subsequent runs use cache. `HF_HUB_OFFLINE=1` prevents re-checking.
-- **Python:** System Python 3.12. Each engine lives in its own venv (pipx or manual).
-  The CLI entrypoint uses system Python (only needs PyYAML, no torch).
+- **Python:** System Python 3.10+ for the CLI entrypoint (only needs PyYAML +
+  num2words, no torch). Each engine lives in its own venv at
+  `~/.local/share/<engine>-venv`, created by the installer via uv. matcha and
+  emojivoice pin Python 3.11 (matcha-tts does not build on 3.12).
 
 ## File Ownership
 

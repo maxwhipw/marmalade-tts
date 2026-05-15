@@ -228,7 +228,8 @@ class TestHashtag:
 
 class TestEngineProfiles:
     def test_all_engines_have_profiles(self):
-        for engine in ["kitten", "kokoro", "piper", "coqui", "pocket"]:
+        for engine in ["kitten", "kokoro", "piper", "coqui", "pocket",
+                       "matcha", "emojivoice"]:
             assert engine in ENGINE_PROFILES
 
     def test_profiles_reference_valid_rules(self):
@@ -266,6 +267,26 @@ class TestEngineProfiles:
 
     def test_pocket_profile_applies_currency_rule(self):
         result = preprocess("$5", engine="pocket")
+        assert "dollars" in result
+
+    def test_matcha_profile_has_all_rules(self):
+        matcha_rules = ENGINE_PROFILES["matcha"]
+        for rule in ["currency", "percentage", "ordinal", "time", "date",
+                     "email", "url", "filename", "abbreviation", "number",
+                     "math", "ampersand", "hashtag"]:
+            assert rule in matcha_rules, f"Matcha profile missing rule: {rule}"
+
+    def test_emojivoice_profile_has_all_rules(self):
+        ev_rules = ENGINE_PROFILES["emojivoice"]
+        for rule in ["currency", "percentage", "ordinal", "time", "date",
+                     "email", "url", "filename", "abbreviation", "number",
+                     "math", "ampersand", "hashtag"]:
+            assert rule in ev_rules, f"EmojiVoice profile missing rule: {rule}"
+
+    def test_emojivoice_preprocessing_preserves_emoji(self):
+        # The emotion emoji must survive preprocessing so the engine can use it.
+        result = preprocess("It costs $5 🤣", engine="emojivoice")
+        assert "🤣" in result
         assert "dollars" in result
 
 

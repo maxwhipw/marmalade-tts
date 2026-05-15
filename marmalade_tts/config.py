@@ -17,9 +17,9 @@ DEFAULT_CONFIG = {
         "play": True,
     },
     "presets": {
-        "fast":     {"kitten": "nano",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "alba"},
-        "balanced": {"kitten": "micro", "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "fantine"},
-        "quality":  {"kitten": "mini",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "cosette"},
+        "fast":     {"kitten": "nano",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "alba",    "matcha": "matcha_ljspeech", "emojivoice": "paige"},
+        "balanced": {"kitten": "micro", "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "fantine", "matcha": "matcha_ljspeech", "emojivoice": "paige"},
+        "quality":  {"kitten": "mini",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "cosette", "matcha": "matcha_ljspeech", "emojivoice": "paige"},
     },
     "engines": {
         "kitten": {
@@ -47,6 +47,16 @@ DEFAULT_CONFIG = {
         "pocket": {
             "device": "cpu",
             "voice": "alba",
+        },
+        "matcha": {
+            "device": "cpu",
+            "model": "matcha_ljspeech",
+            "daemon": False,
+        },
+        "emojivoice": {
+            "device": "cpu",
+            "voice": "paige",
+            "daemon": False,
         },
     },
 }

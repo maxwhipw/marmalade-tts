@@ -1,0 +1,14 @@
+[Unit]
+Description=Marmalade TTS — Matcha-TTS model daemon (kept in RAM)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/matcha-tts-venv/bin/python \
+    %h/.local/share/marmalade-tts/daemon/matcha-daemon.py
+Restart=on-failure
+RestartSec=5
+Environment=MATCHA_MODEL=matcha_ljspeech
+
+[Install]
+WantedBy=default.target

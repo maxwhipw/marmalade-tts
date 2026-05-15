@@ -199,7 +199,8 @@ class TestEngineCfg:
 class TestDefaultConfig:
     def test_all_engines_present(self):
         cfg = cfg_mod.DEFAULT_CONFIG
-        for engine in ["kitten", "kokoro", "piper", "coqui", "pocket"]:
+        for engine in ["kitten", "kokoro", "piper", "coqui", "pocket",
+                       "matcha", "emojivoice"]:
             assert engine in cfg["engines"], f"Missing engine: {engine}"
 
     def test_all_presets_present(self):
@@ -229,3 +230,21 @@ class TestDefaultConfig:
             assert "pocket" in cfg["presets"][preset], (
                 f"pocket missing from {preset} preset"
             )
+
+    def test_matcha_in_default_config(self):
+        cfg = cfg_mod.DEFAULT_CONFIG
+        assert "matcha" in cfg["engines"]
+        assert cfg["engines"]["matcha"]["model"] == "matcha_ljspeech"
+        assert cfg["engines"]["matcha"]["device"] == "cpu"
+
+    def test_emojivoice_in_default_config(self):
+        cfg = cfg_mod.DEFAULT_CONFIG
+        assert "emojivoice" in cfg["engines"]
+        assert cfg["engines"]["emojivoice"]["voice"] == "paige"
+        assert cfg["engines"]["emojivoice"]["device"] == "cpu"
+
+    def test_matcha_and_emojivoice_in_presets(self):
+        cfg = cfg_mod.DEFAULT_CONFIG
+        for preset in ["fast", "balanced", "quality"]:
+            assert "matcha" in cfg["presets"][preset]
+            assert "emojivoice" in cfg["presets"][preset]

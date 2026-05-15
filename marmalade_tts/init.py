@@ -78,9 +78,30 @@ ENGINE_INFO = {
             },
         },
     },
+    "matcha": {
+        "label": "Matcha-TTS",
+        "desc":  "Fast flow-matching neural TTS. Clear, natural English. Needs espeak-ng.",
+        "size":  "~73 MB model + ~50 MB vocoder (auto-download on first use)",
+        "default": False,
+        "options": {},
+    },
+    "emojivoice": {
+        "label": "EmojiVoice",
+        "desc":  "Emoji-controlled expressive TTS — 🤣😭😡 in the text set the emotion. English.",
+        "size":  "~78 MB speaker checkpoint (manual download — see INSTALL.md)",
+        "default": False,
+        "options": {
+            "voice": {
+                "prompt": "Speaker",
+                "choices": ["paige"],
+                "default": "paige",
+                "help": "paige — the verified EmojiVoice speaker checkpoint.",
+            },
+        },
+    },
 }
 
-ENGINE_ORDER = ["kitten", "piper", "kokoro", "coqui", "pocket"]
+ENGINE_ORDER = ["kitten", "piper", "kokoro", "coqui", "pocket", "matcha", "emojivoice"]
 
 # ── TUI helpers (stdlib only) ────────────────────────────────────────────────
 
@@ -272,6 +293,10 @@ def init_non_interactive(engines, engine_options=None):
             cfg.setdefault("model", "")
         elif eng == "pocket":
             cfg.setdefault("voice", "alba")
+        elif eng == "matcha":
+            cfg.setdefault("model", "matcha_ljspeech")
+        elif eng == "emojivoice":
+            cfg.setdefault("voice", "paige")
 
         cfg.setdefault("daemon", False)
         cfg.setdefault("device", "cpu")
@@ -347,6 +372,10 @@ def init_interactive():
             cfg.setdefault("model", "")
         elif eng == "pocket":
             cfg.setdefault("voice", "alba")
+        elif eng == "matcha":
+            cfg.setdefault("model", "matcha_ljspeech")
+        elif eng == "emojivoice":
+            cfg.setdefault("voice", "paige")
 
         cfg.setdefault("daemon", False)
         cfg.setdefault("device", "cpu")

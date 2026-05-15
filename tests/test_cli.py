@@ -91,6 +91,20 @@ class TestLooksLikeVoice:
     def test_pocket_plain_text(self):
         assert looks_like_voice("pocket", "hello world") is False
 
+    # EmojiVoice — closed list of speaker names
+    def test_emojivoice_valid_speaker(self):
+        assert looks_like_voice("emojivoice", "paige") is True
+
+    def test_emojivoice_plain_text_not_a_voice(self):
+        assert looks_like_voice("emojivoice", "hello world") is False
+        assert looks_like_voice("emojivoice", "I can't believe it 🤣") is False
+
+    # Matcha — model specs, not positional voices; use --voice
+    def test_matcha_model_not_treated_as_voice(self):
+        assert looks_like_voice("matcha", "matcha_ljspeech") is False
+        assert looks_like_voice("matcha", "/models/custom.ckpt") is False
+        assert looks_like_voice("matcha", "hello world") is False
+
 
 # ── version ───────────────────────────────────────────────────────────────────
 
@@ -159,7 +173,7 @@ def test_completion_bash_piper_voice_uses_file_completion(capsys):
         main()
     out = capsys.readouterr().out
     # The --voice case statement must route piper to _filedir onnx.
-    assert "piper)  _filedir onnx" in out
+    assert "piper)      _filedir onnx" in out
 
 
 def test_completion_zsh(capsys):
@@ -566,11 +580,13 @@ class TestPresetResolution:
                 "kitten": {"voice": "Kiki", "model_size": "micro", "daemon": False, "device": "cpu"},
                 "kokoro": {"voice": "af_heart", "lang": "a", "daemon": False, "device": "cpu"},
                 "pocket": {"voice": "alba", "device": "cpu"},
+                "matcha": {"model": "matcha_ljspeech", "daemon": False, "device": "cpu"},
+                "emojivoice": {"voice": "paige", "daemon": False, "device": "cpu"},
             },
             "presets": {
-                "fast":     {"kitten": "nano",  "kokoro": "af_heart", "pocket": "alba"},
-                "balanced": {"kitten": "micro", "kokoro": "af_heart", "pocket": "fantine"},
-                "quality":  {"kitten": "mini",  "kokoro": "af_heart", "pocket": "cosette"},
+                "fast":     {"kitten": "nano",  "kokoro": "af_heart", "pocket": "alba",    "matcha": "matcha_ljspeech", "emojivoice": "paige"},
+                "balanced": {"kitten": "micro", "kokoro": "af_heart", "pocket": "fantine", "matcha": "matcha_ljspeech", "emojivoice": "paige"},
+                "quality":  {"kitten": "mini",  "kokoro": "af_heart", "pocket": "cosette", "matcha": "matcha_ljspeech", "emojivoice": "paige"},
             },
         }
         received_cfg = {}
@@ -605,6 +621,14 @@ class TestPresetResolution:
 
     def test_pocket_balanced_preset_sets_fantine(self):
         self._run_preset("--balanced", "pocket", "voice", "fantine")
+
+    def test_matcha_fast_preset_sets_model(self):
+        # matcha is a model-spec engine — preset resolves into `model`
+        self._run_preset("--fast", "matcha", "model", "matcha_ljspeech")
+
+    def test_emojivoice_fast_preset_sets_voice(self):
+        # emojivoice is a closed-list-voice engine — preset resolves into `voice`
+        self._run_preset("--fast", "emojivoice", "voice", "paige")
 
 
 # ── --out and passthrough flags ───────────────────────────────────────────────────────────
@@ -832,3 +856,62 @@ class TestScriptingFlags:
             with pytest.raises(SystemExit) as exc:
                 main()
         assert exc.value.code != 0
+
+
+# ── install subcommand ───────────────────────────────────────────────────────
+
+def _ok_result(engine, ok=True):
+    return {"engine": engine, "venv": f"/tmp/{engine}-venv", "system_deps": [],
+            "models": [], "selftest": (ok, "ok" if ok else "boom"), "error": None}
+
+
+class TestInstallSubcommand:
+    def test_install_routes_to_installer(self):
+        with patch("sys.argv", ["marmalade-tts", "install", "kitten"]), \
+             patch("marmalade_tts.installer.install_engines",
+                   return_value=[_ok_result("kitten")]) as mock_inst:
+            main()
+        mock_inst.assert_called_once()
+        assert mock_inst.call_args[0][0] == ["kitten"]
+
+    def test_install_multiple_engines(self):
+        with patch("sys.argv", ["marmalade-tts", "install", "kitten", "matcha"]), \
+             patch("marmalade_tts.installer.install_engines",
+                   return_value=[_ok_result("kitten"), _ok_result("matcha")]) as mock_inst:
+            main()
+        assert mock_inst.call_args[0][0] == ["kitten", "matcha"]
+
+    def test_install_flags_passed_through(self):
+        with patch("sys.argv", ["marmalade-tts", "install", "kitten",
+                                "--allow-sudo", "--reinstall", "--skip-selftest"]), \
+             patch("marmalade_tts.init._is_tty", return_value=False), \
+             patch("marmalade_tts.installer.install_engines",
+                   return_value=[_ok_result("kitten")]) as mock_inst:
+            main()
+        kwargs = mock_inst.call_args[1]
+        assert kwargs["allow_sudo"] is True
+        assert kwargs["reinstall"] is True
+        assert kwargs["skip_selftest"] is True
+        assert kwargs["interactive"] is False
+
+    def test_install_unknown_engine_exits(self):
+        with patch("sys.argv", ["marmalade-tts", "install", "bogus"]), \
+             patch("marmalade_tts.installer.install_engines") as mock_inst:
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code != 0
+        mock_inst.assert_not_called()
+
+    def test_install_failed_selftest_exits_nonzero(self):
+        with patch("sys.argv", ["marmalade-tts", "install", "kitten"]), \
+             patch("marmalade_tts.installer.install_engines",
+                   return_value=[_ok_result("kitten", ok=False)]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code != 0
+
+    def test_install_success_no_exit(self):
+        with patch("sys.argv", ["marmalade-tts", "install", "kitten"]), \
+             patch("marmalade_tts.installer.install_engines",
+                   return_value=[_ok_result("kitten")]):
+            main()  # no SystemExit

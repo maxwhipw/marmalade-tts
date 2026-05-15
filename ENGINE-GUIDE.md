@@ -24,6 +24,7 @@ used as the worked example throughout).
 | 11 | `tests/` | Write unit + integration tests |
 | 12 | `README.md` | Update engine table and examples |
 | 13 | `INSTALL.md` | Add installation instructions |
+| 14 | `marmalade_tts/installer.py` (+ `models.json`) | Add the `INSTALL_RECIPES` entry so `init` / `install` can install the engine |
 
 > **Checklist at the end of this file.** Print it, check each box.
 
@@ -494,11 +495,65 @@ This only runs when the engine is installed (`pytest -m smoke`).
 
 ## Step 13 — Update `INSTALL.md`
 
-Add a section `### MyEngine` with:
-- `pip install` / `pipx install` command
-- Any model download steps
-- Venv setup if needed
-- Any optional extras (voice cloning, GPU support, etc.)
+`INSTALL.md` documents what the installer does under the hood, plus a
+manual-fallback appendix. Add:
+- A row to the per-engine reference table (venv, Python, pip, system deps, models)
+- A `### myengine` block in the manual-fallback appendix mirroring your recipe
+
+---
+
+## Step 14 — Add an installer recipe
+
+**File:** `marmalade_tts/installer.py` (and `marmalade_tts/models.json` if the
+engine needs files fetched).
+
+This is what makes `marmalade-tts init` and `marmalade-tts install myengine`
+actually install your engine — do it early in practice, not last; the engine
+is not usable hands-off without it.
+
+Add an entry to `INSTALL_RECIPES`:
+
+```python
+INSTALL_RECIPES = {
+    ...
+    "myengine": {
+        "python": None,            # or "3.11" if the engine needs a specific version
+        "venv": "~/.local/share/myengine-venv",   # MUST match the engine module's
+                                                  # venv constant AND daemon.py ENGINE_PYTHON
+        "pip": ["myengine-tts"],   # packages / wheel URLs for `uv pip install`
+        "pip_post": [],            # extra `uv pip install` invocations, each a list of args
+        "system_deps": [],         # e.g. ["espeak-ng"] — installed via the distro pkg manager
+        "models": None,            # model-ids from models.json, or None if it auto-downloads
+        "warm_cache": None,        # Python snippet run in the venv to pre-download models
+        "selftest_text": "Marmalade myengine self test.",
+    },
+}
+```
+
+If the engine needs files that aren't auto-downloaded (a voice model, a
+checkpoint), add a `models.json` entry and list its id under `models`:
+
+```json
+"myengine-default-voice": {
+  "engine": "myengine",
+  "files": [
+    {
+      "dest": "~/.local/share/myengine/voices/default.bin",
+      "sha256": null,
+      "sources": [
+        {"type": "https", "url": "https://.../default.bin"}
+      ]
+    }
+  ]
+}
+```
+
+> **Critical:** the recipe's `venv` path must be identical to the venv
+> constant in `engines/{name}.py` and (for daemon engines) the path in
+> `daemon.py`'s `ENGINE_PYTHON`. `test_installer.py` asserts this — keep all
+> three in sync. Every engine is invoked by an explicit venv path, never via
+> `$PATH` or an in-process import, so the post-install self-test exercises
+> the exact code path the CLI uses.
 
 ---
 
@@ -543,7 +598,15 @@ Use this before opening a PR or committing a new engine.
 - [ ] `README.md` — engines table updated
 - [ ] `README.md` — usage examples section added
 - [ ] `README.md` — config reference includes new engine
-- [ ] `INSTALL.md` — installation instructions added
+- [ ] `INSTALL.md` — per-engine reference table row + manual-fallback block added
+
+### Installer
+- [ ] `installer.py` — `INSTALL_RECIPES` entry added with all required keys
+- [ ] `installer.py` — recipe `venv` matches the engine module's venv constant
+      and `daemon.py` `ENGINE_PYTHON` (test_installer.py asserts this)
+- [ ] `models.json` — entry added if the engine needs files fetched (and the
+      id is listed under the recipe's `models`)
+- [ ] `marmalade-tts install {name}` installs the engine and the self-test passes
 
 ---
 

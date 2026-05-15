@@ -1,0 +1,46 @@
+{
+  "_comment": "marmalade-tts model manifest. Each model-id maps to one or more files; each file has a dest path, an optional sha256, and an ordered list of download sources tried in turn. sha256 is null where an upstream-verified hash is not yet available — fill these once the marmalade/models mirror is hosted (the mirrored copy becomes the canonical hashed source). To add the mirror, prepend a source entry to each file's `sources` list. HF-auto-download engines (kitten, kokoro, pocket, coqui) and matcha (its own MATCHA_URLS) need no manifest entry — the installer's warm_cache covers them.",
+  "models": {
+    "piper-en_US-lessac-medium": {
+      "engine": "piper",
+      "files": [
+        {
+          "dest": "~/.local/share/piper/voices/en_US-lessac-medium.onnx",
+          "sha256": null,
+          "sources": [
+            {
+              "type": "https",
+              "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+            }
+          ]
+        },
+        {
+          "dest": "~/.local/share/piper/voices/en_US-lessac-medium.onnx.json",
+          "sha256": null,
+          "sources": [
+            {
+              "type": "https",
+              "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
+            }
+          ]
+        }
+      ]
+    },
+    "emojivoice-paige": {
+      "engine": "emojivoice",
+      "files": [
+        {
+          "dest": "~/.local/share/emojivoice/models/emoji-hri-paige-inference.ckpt",
+          "sha256": null,
+          "sources": [
+            {
+              "type": "gdrive",
+              "folder_id": "1E_YTAaQxQfFdZYAKs547bgd4epkUbz_5",
+              "filename": "emoji-hri-paige-inference.ckpt"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
