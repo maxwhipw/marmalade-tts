@@ -213,11 +213,15 @@ ENGINE_PROFILES = {
 | `math` | `x = y` → `x equals y` | Math symbols |
 | `ampersand` | `bread & butter` → `bread and butter` | Ampersand |
 | `hashtag` | `#100` → `number 100` | Hashtags |
+| `emoji` | `hello 🤣` → `hello` | Strip emojis (every engine except `emojivoice`) |
 
 **Guidance by engine type:**
 - Handles nothing natively → include all rules (like `piper`, `kitten`, `pocket`)
 - Handles numbers/abbreviations natively → skip `number`, `abbreviation` (like `kokoro`)
 - Handles basic numbers → skip `number`, `ordinal` (like `coqui`)
+- **Consumes emojis itself** → exclude `emoji` (only `emojivoice` so far — it
+  maps the emoji to a speaker id, so the rule would force every line to the
+  neutral speaker)
 
 > **Lesson from pocket:** Pocket was omitted from `ENGINE_PROFILES`, so it fell
 > back to the kitten profile silently. Explicit is better than silent fallback.

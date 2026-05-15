@@ -5,6 +5,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`emoji` preprocessing rule.** Strips emojis before synthesis for every
+  engine except `emojivoice`. Without this, espeak-backed engines (kokoro,
+  piper, matcha, …) verbalize them as their Unicode names — `😭` becomes
+  "loudly crying face", `🤣` becomes "rolling on the floor laughing". Now
+  on by default in every engine's profile. Remove `emoji` from
+  `engines.<name>.preprocessing` in config to keep emojis (e.g. for
+  emojivoice). The emoji rule is intentionally **omitted** from
+  `emojivoice`'s default profile so the emotion emoji survives
+  preprocessing and reaches the engine.
+
 ## [0.5.0] — 2026-05-14
 
 Hands-off engine installation, and two new expressive engines.

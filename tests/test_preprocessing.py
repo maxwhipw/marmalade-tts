@@ -224,6 +224,54 @@ class TestHashtag:
         assert "hashtag hello" in result
 
 
+# ── Emoji ────────────────────────────────────────────────────────────────────
+
+class TestEmoji:
+    def test_single_emoji_stripped(self):
+        # Without this rule, espeak-backed engines would say "loudly crying face".
+        result = preprocess("I miss you 😭", rules=["emoji"])
+        assert "😭" not in result
+        assert "I miss you" in result
+
+    def test_multiple_emojis_stripped(self):
+        result = preprocess("Hello 🤣 world 😡 again", rules=["emoji"])
+        assert "🤣" not in result and "😡" not in result
+        assert "Hello world again" == result
+
+    def test_zwj_sequence_fully_stripped(self):
+        # ZWJ-joined family emoji (👨‍👩‍👧) — every codepoint must go.
+        result = preprocess("our \U0001F468‍\U0001F469‍\U0001F467 here",
+                            rules=["emoji"])
+        for ch in ("\U0001F468", "\U0001F469", "\U0001F467", "‍"):
+            assert ch not in result
+        assert "our here" == result
+
+    def test_dingbats_stripped(self):
+        # ☀ ★ ✓ live in the misc-symbols/dingbats range.
+        result = preprocess("sunny ☀ day", rules=["emoji"])
+        assert "☀" not in result
+        assert "sunny day" == result
+
+    def test_flag_pair_stripped(self):
+        # Regional indicator halves that combine into country flags.
+        result = preprocess("hello \U0001F1FA\U0001F1F8 world", rules=["emoji"])
+        for ch in ("\U0001F1FA", "\U0001F1F8"):
+            assert ch not in result
+        assert "hello world" == result
+
+    def test_no_emoji_left_untouched(self):
+        assert preprocess("plain ascii only", rules=["emoji"]) == "plain ascii only"
+
+    def test_emoji_at_start_and_end_trimmed(self):
+        result = preprocess("🤣 middle 😭", rules=["emoji"])
+        assert result == "middle"
+
+    def test_emoji_only_text_collapses_to_empty(self):
+        # Caller has to decide what to do with empty text — preprocess just
+        # returns the empty string.
+        assert preprocess("🤣😭", rules=["emoji"]) == ""
+
+
 # ── Engine profiles ──────────────────────────────────────────────────────────
 
 class TestEngineProfiles:
@@ -257,7 +305,7 @@ class TestEngineProfiles:
         pocket_rules = ENGINE_PROFILES["pocket"]
         for rule in ["currency", "percentage", "ordinal", "time", "date",
                      "email", "url", "filename", "abbreviation", "number",
-                     "math", "ampersand", "hashtag"]:
+                     "math", "ampersand", "hashtag", "emoji"]:
             assert rule in pocket_rules, f"Pocket profile missing rule: {rule}"
 
     def test_pocket_profile_applies_number_rule(self):
@@ -273,15 +321,31 @@ class TestEngineProfiles:
         matcha_rules = ENGINE_PROFILES["matcha"]
         for rule in ["currency", "percentage", "ordinal", "time", "date",
                      "email", "url", "filename", "abbreviation", "number",
-                     "math", "ampersand", "hashtag"]:
+                     "math", "ampersand", "hashtag", "emoji"]:
             assert rule in matcha_rules, f"Matcha profile missing rule: {rule}"
 
-    def test_emojivoice_profile_has_all_rules(self):
+    def test_emojivoice_profile_has_all_non_emoji_rules(self):
         ev_rules = ENGINE_PROFILES["emojivoice"]
         for rule in ["currency", "percentage", "ordinal", "time", "date",
                      "email", "url", "filename", "abbreviation", "number",
                      "math", "ampersand", "hashtag"]:
             assert rule in ev_rules, f"EmojiVoice profile missing rule: {rule}"
+
+    def test_emoji_rule_in_every_engine_profile_except_emojivoice(self):
+        # Default-on emoji stripping for every espeak/phonemizer-backed engine,
+        # off for emojivoice (which consumes the emoji to set the emotion).
+        for engine, rules in ENGINE_PROFILES.items():
+            if engine == "emojivoice":
+                assert "emoji" not in rules, "emojivoice must NOT strip its own emoji"
+            else:
+                assert "emoji" in rules, f"{engine} profile missing the emoji rule"
+
+    def test_kokoro_strips_emoji_by_default(self):
+        # Regression: without the emoji rule, espeak verbalizes 😭 as
+        # "loudly crying face" — the bug that motivated adding this rule.
+        result = preprocess("hello 😭 world", engine="kokoro")
+        assert "😭" not in result
+        assert "hello world" in result
 
     def test_emojivoice_preprocessing_preserves_emoji(self):
         # The emotion emoji must survive preprocessing so the engine can use it.

@@ -307,6 +307,15 @@ marmalade-tts "See https://example.com for details"
 marmalade-tts "The 3rd place finisher at 9:30am"
 # → "The third place finisher at nine thirty a m"
 
+# Emojis are stripped by default for every engine except emojivoice — which
+# consumes them itself to set the emotional style. Without this, espeak-backed
+# engines verbalize them as "loudly crying face", "rolling on the floor
+# laughing", etc.
+marmalade-tts kokoro "I miss you 😭"
+# → "I miss you"   (the emoji is dropped)
+marmalade-tts emojivoice "I miss you 😭"
+# → "I miss you"   (read with the sad style; the engine handles the emoji)
+
 # Turn it off if you've already formatted your text:
 marmalade-tts --no-preprocessing "forty two dollars"
 

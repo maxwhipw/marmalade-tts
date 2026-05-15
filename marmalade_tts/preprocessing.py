@@ -211,6 +211,34 @@ def _hashtag(m: re.Match) -> str:
     return f"hashtag {text}"
 
 
+def _emoji(_m: re.Match) -> str:
+    """Strip emoji characters. Without this, espeak/phonemizer-backed engines
+    verbalize them as their Unicode names ("loudly crying face", "rolling on
+    the floor laughing", ...). Replaced with a single space; the final
+    whitespace-collapse pass tidies up the result.
+
+    NOT applied to the `emojivoice` engine: emojivoice consumes the emoji
+    itself (it selects the emotional speaking style) and strips it later
+    inside the engine.
+    """
+    return " "
+
+
+# Emoji codepoint ranges, broad enough to catch faces, symbols, dingbats,
+# flags (regional indicators), the zero-width joiner used in emoji sequences,
+# variation selector-16, and the keycap combining mark.
+_EMOJI_PATTERN = (
+    "["
+    "\U0001F300-\U0001FAFF"     # symbols & pictographs, emoticons, transport
+    "☀-➿"             # misc symbols + dingbats
+    "\U0001F1E6-\U0001F1FF"     # regional indicators (flag halves)
+    "‍"                    # zero-width joiner (emoji sequences)
+    "️"                    # variation selector-16
+    "⃣"                    # combining enclosing keycap
+    "]+"
+)
+
+
 # ── Rule registry ────────────────────────────────────────────────────────────
 
 RULES = {
@@ -240,6 +268,10 @@ RULES = {
                       "Ampersand: & → and"),
     "hashtag":       (r"#(\w+)", _hashtag,
                       "Hashtags: #100 → number 100"),
+    "emoji":         (_EMOJI_PATTERN, _emoji,
+                      "Strip emojis (default on for every engine except emojivoice — "
+                      "without this, espeak-backed engines verbalize them as "
+                      "\"loudly crying face\" etc.)"),
 }
 
 # ── Engine default profiles ──────────────────────────────────────────────────
@@ -250,42 +282,44 @@ ENGINE_PROFILES = {
     "kitten": [
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
-        "math", "ampersand", "hashtag",
+        "math", "ampersand", "hashtag", "emoji",
     ],
     "kokoro": [
         # Kokoro (via misaki) handles numbers, abbreviations, and some symbols natively
         "currency", "percentage", "time", "date",
         "email", "url", "filename",
-        "math", "ampersand", "hashtag",
+        "math", "ampersand", "hashtag", "emoji",
     ],
     "piper": [
         # Piper handles almost nothing — needs everything
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
-        "math", "ampersand", "hashtag",
+        "math", "ampersand", "hashtag", "emoji",
     ],
     "coqui": [
         # Coqui handles basic numbers but not much else
         "currency", "percentage", "time", "date",
         "email", "url", "filename", "abbreviation",
-        "math", "ampersand", "hashtag",
+        "math", "ampersand", "hashtag", "emoji",
     ],
     "pocket": [
         # Pocket doesn't handle any text normalization natively
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
-        "math", "ampersand", "hashtag",
+        "math", "ampersand", "hashtag", "emoji",
     ],
     "matcha": [
         # Matcha-TTS only phonemizes — it normalizes nothing, so apply everything.
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
-        "math", "ampersand", "hashtag",
+        "math", "ampersand", "hashtag", "emoji",
     ],
     "emojivoice": [
         # EmojiVoice runs on Matcha-TTS — also no native normalization.
-        # Note: these rules never touch emoji characters, so the emotion
-        # emoji survives preprocessing and is consumed by the engine.
+        # NOTE: the "emoji" rule is INTENTIONALLY omitted — emojivoice consumes
+        # the emotion emoji itself (parse_emoji in the engine maps it to the
+        # speaker id and strips it). Stripping it here would force every
+        # utterance to the neutral speaker.
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
         "math", "ampersand", "hashtag",
@@ -316,10 +350,13 @@ def preprocess(text: str, engine: str = None, rules: list = None) -> str:
         rules = ENGINE_PROFILES.get(engine, ENGINE_PROFILES["kitten"])
 
     # Apply rules in order. Order matters:
-    # 1. URLs and emails first (before filename rule eats dots)
+    # 0. Strip emoji first — they're disjoint from every other rule's regex
+    #    range, but stripping early keeps later debug output readable.
+    # 1. URLs and emails before filename rule eats dots
     # 2. Currency/percentage before numbers (so $100 isn't just "100")
     # 3. Numbers last (catch remaining bare numbers)
     priority = [
+        "emoji",                                    # strip emoji first
         "email", "url",                          # capture structured patterns first
         "currency", "percentage",                  # money/percent before generic numbers
         "time", "date", "ordinal",                 # temporal + ordinal before numbers
@@ -336,5 +373,9 @@ def preprocess(text: str, engine: str = None, rules: list = None) -> str:
             continue
         pattern, func, desc = RULES[rule_name]
         text = re.sub(pattern, func, text)
+
+    # Collapse the runs of whitespace any rule (notably "emoji") may have
+    # left behind. Idempotent and harmless when no rule produced extra spaces.
+    text = re.sub(r"\s+", " ", text).strip()
 
     return text
