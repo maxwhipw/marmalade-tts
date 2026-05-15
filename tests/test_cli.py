@@ -915,3 +915,155 @@ class TestInstallSubcommand:
              patch("marmalade_tts.installer.install_engines",
                    return_value=[_ok_result("kitten")]):
             main()  # no SystemExit
+
+
+# ── Batch mode (implicit on multi-line input) ────────────────────────────────
+
+class _BatchHarness:
+    """Patches engine + tempfile/playback for batch tests. Each call to
+    make_tmp_wav returns a fresh path so we can tell utterances apart."""
+    def __init__(self, argv, stdin_text=None, cfg=None):
+        self.argv = argv
+        self.stdin_text = stdin_text
+        self.cfg = cfg or _fake_synth_config()
+        self.synth = MagicMock()
+        self.tmp_paths_used = []
+        self.played = []
+
+    def __enter__(self):
+        import io
+        self.stack = []
+
+        def fake_make_tmp_wav():
+            p = f"/tmp/batch-{len(self.tmp_paths_used)}.wav"
+            self.tmp_paths_used.append(p)
+            return p
+
+        self.stdout = io.StringIO()
+        self.stderr = io.StringIO()
+        MockEngine = MagicMock()
+        MockEngine.return_value.synthesize = self.synth
+
+        patches = [
+            patch("sys.argv", self.argv),
+            patch("marmalade_tts.cli.cfg_mod.load", return_value=self.cfg),
+            patch("marmalade_tts.cli.make_tmp_wav", side_effect=fake_make_tmp_wav),
+            patch("marmalade_tts.cli.play_wav", side_effect=self.played.append),
+            patch("marmalade_tts.cli.os.unlink"),
+            patch("marmalade_tts.cli.os.path.exists", return_value=True),
+            patch("marmalade_tts.cli.os.makedirs"),
+            patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {"kokoro": MockEngine}),
+            patch("sys.stdout", self.stdout),
+            patch("sys.stderr", self.stderr),
+        ]
+        if self.stdin_text is not None:
+            patches.append(patch("sys.stdin", io.StringIO(self.stdin_text)))
+        for p in patches:
+            p.__enter__()
+            self.stack.append(p)
+        return self
+
+    def __exit__(self, *a):
+        for p in reversed(self.stack):
+            p.__exit__(*a)
+
+
+class TestBatchMode:
+    def test_multiline_triggers_batch(self):
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play",
+                            "--text", "line one\nline two\nline three"]) as h:
+            main()
+        # Three lines → three synthesize calls.
+        assert h.synth.call_count == 3
+        texts = [c.args[0] for c in h.synth.call_args_list]
+        assert texts == ["line one", "line two", "line three"]
+
+    def test_singleline_stays_single(self):
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play",
+                            "--text", "just one line"]) as h:
+            main()
+        assert h.synth.call_count == 1
+        assert h.synth.call_args[0][0] == "just one line"
+
+    def test_blank_lines_skipped(self):
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play",
+                            "--text", "first\n\n   \nsecond"]) as h:
+            main()
+        assert h.synth.call_count == 2
+        texts = [c.args[0] for c in h.synth.call_args_list]
+        assert texts == ["first", "second"]
+
+    def test_out_pattern_substitutes_index(self, tmp_path):
+        pat = str(tmp_path / "chap-%03d.wav")
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play",
+                            "--out", pat,
+                            "--text", "a\nb\nc"]) as h:
+            main()
+        paths = [c.args[1] for c in h.synth.call_args_list]
+        assert paths == [str(tmp_path / "chap-001.wav"),
+                         str(tmp_path / "chap-002.wav"),
+                         str(tmp_path / "chap-003.wav")]
+
+    def test_out_dir_auto_names(self, tmp_path):
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play",
+                            "--out-dir", str(tmp_path),
+                            "--text", "a\nb"]) as h:
+            main()
+        paths = [c.args[1] for c in h.synth.call_args_list]
+        assert paths == [str(tmp_path / "001.wav"),
+                         str(tmp_path / "002.wav")]
+
+    def test_out_file_with_batch_errors(self):
+        with _BatchHarness(["marmalade-tts", "kokoro",
+                            "--out", "single.wav",
+                            "--text", "line one\nline two"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code != 0
+
+    def test_json_batch_returns_array(self):
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play", "--json",
+                            "--text", "alpha\nbeta"]) as h:
+            main()
+            out = h.stdout.getvalue()
+        import json
+        payload = json.loads(out)
+        assert isinstance(payload, list)
+        assert len(payload) == 2
+        assert payload[0]["text"] == "alpha"
+        assert payload[1]["text"] == "beta"
+
+    def test_json_single_returns_object(self):
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play", "--json",
+                            "--text", "just alpha"]) as h:
+            main()
+            out = h.stdout.getvalue()
+        import json
+        payload = json.loads(out)
+        assert isinstance(payload, dict)
+        assert payload["text"] == "just alpha"
+
+    def test_print_path_batch_one_per_line(self, tmp_path):
+        pat = str(tmp_path / "out-%d.wav")
+        with _BatchHarness(["marmalade-tts", "kokoro", "--no-play", "--print-path",
+                            "--out", pat,
+                            "--text", "a\nb\nc"]) as h:
+            main()
+            out = h.stdout.getvalue().strip().splitlines()
+        assert out == [str(tmp_path / "out-1.wav"),
+                       str(tmp_path / "out-2.wav"),
+                       str(tmp_path / "out-3.wav")]
+
+    def test_play_sequentially_in_batch(self):
+        cfg = _fake_synth_config({"play": True})
+        with _BatchHarness(["marmalade-tts", "kokoro",
+                            "--text", "a\nb\nc"], cfg=cfg) as h:
+            main()
+        # play_wav called once per utterance, in order.
+        assert len(h.played) == 3
+
+    def test_stdin_multiline_triggers_batch(self):
+        with _BatchHarness(["marmalade-tts", "kokoro", "--stdin", "--no-play"],
+                           stdin_text="line one\nline two") as h:
+            main()
+        assert h.synth.call_count == 2

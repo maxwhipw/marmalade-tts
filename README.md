@@ -717,6 +717,33 @@ echo "Hello world" | marmalade-tts -
 marmalade-tts @script.txt --out script.wav
 ```
 
+## Batch synthesis
+
+Multi-line text input — from `@file.txt`, `--stdin`, or `--text "a\nb"` —
+automatically becomes a **batch**: one WAV per non-empty line, played in
+sequence (or written via `--out PATTERN` / `--out-dir DIR`).
+
+```sh
+# Narrate chapters.txt line-by-line, playing each through the speakers
+marmalade-tts kokoro @chapters.txt
+
+# Write one WAV per line into ./out/ (auto-named 001.wav, 002.wav, …)
+marmalade-tts kokoro @chapters.txt --out-dir ./out/
+
+# Use a printf pattern instead — chapter-001.wav, chapter-002.wav, …
+marmalade-tts kokoro @chapters.txt --out 'chapter-%03d.wav'
+
+# JSON output is an array in batch (one object per utterance)
+marmalade-tts kokoro @chapters.txt --no-play --json --out-dir ./out/
+
+# Single-line input still produces one WAV — same as always
+marmalade-tts kokoro "Hello world"
+```
+
+Blank lines are skipped. The trigger is **implicit** (any multi-line input
+batches) — if you want a multi-line passage read as a single utterance,
+pre-join the lines on your end or pass it as a single argument.
+
 ---
 
 ## Requirements

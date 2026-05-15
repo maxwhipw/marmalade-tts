@@ -6,6 +6,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Batch synthesis (universal).** Multi-line text input — from `@file.txt`,
+  `--stdin`, or `--text "a\nb"` — now produces one WAV per non-empty line.
+  Plays each through the speakers in sequence, or writes them via the new
+  `--out-dir DIR` flag or a `--out PATTERN` with a printf format
+  (`'chapter-%03d.wav'`). `--json` returns an array of result objects in
+  batch (one per utterance); single-line input keeps the original
+  single-object shape. The trigger is **implicit** on multi-line input —
+  a deliberate UX tradeoff documented in agent memory; revisit if it
+  surprises users.
 - **`emoji` preprocessing rule.** Strips emojis before synthesis for every
   engine except `emojivoice`. Without this, espeak-backed engines (kokoro,
   piper, matcha, …) verbalize them as their Unicode names — `😭` becomes

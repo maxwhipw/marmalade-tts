@@ -451,23 +451,58 @@ def _apply_effects_if_any(out_path, effect_list, config):
         print(f"[marmalade-tts] Effect warning: {e}", file=sys.stderr)
 
 
-def _report_output(args, engine_name, voice, out_path, effect_list, text, eng_cfg):
-    """Print the per-run result in the user-requested format."""
+def _resolve_out_paths(args, n: int, config: dict, parser):
+    """Resolve output paths for N utterances. Returns (paths, auto_play).
+
+    Rules (apply to single-utterance and batch alike — batch is just N>1):
+      --out PATTERN  (contains '%')   : printf-format with 1-based index.
+      --out FILE     (no '%')         : literal path; N must be 1.
+      --out-dir DIR                   : auto-name 001.wav, 002.wav, …
+      neither                          : a tmp WAV per utterance, auto-played.
+    """
+    if args.out and "%" in args.out:
+        return [args.out % (i + 1) for i in range(n)], False
+    if args.out_dir:
+        os.makedirs(args.out_dir, exist_ok=True)
+        width = max(3, len(str(n)))
+        return ([os.path.join(args.out_dir, f"{i + 1:0{width}d}.wav")
+                 for i in range(n)],
+                False)
+    if args.out:
+        if n != 1:
+            parser.error(
+                "Batch input (multi-line text) can't write into a single "
+                "--out file. Pass --out 'PATTERN-%03d.wav' (with a printf "
+                "format) or --out-dir DIR, or omit --out to play each line in "
+                "sequence."
+            )
+        return [args.out], False
+    return ([make_tmp_wav() for _ in range(n)],
+            config.get("defaults", {}).get("play", True))
+
+
+def _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch):
+    """Print results in the user-requested format. For batch, --json prints
+    a JSON array (one element per utterance); for single, --json keeps the
+    same single-object shape it has always had."""
     if args.json:
         import json
-        print(json.dumps({
+        payload = [{
             "ok": True,
             "version": __version__,
             "engine": engine_name,
             "voice": voice or eng_cfg.get("voice"),
-            "out": out_path,
+            "out": r["out"],
             "effects": effect_list,
-            "text": text,
-        }))
+            "text": r["text"],
+        } for r in results]
+        print(json.dumps(payload if is_batch else payload[0]))
     elif args.print_path:
-        print(out_path)
+        for r in results:
+            print(r["out"])
     elif not args.quiet:
-        print(f"[marmalade-tts] Generated: {out_path}", file=sys.stderr)
+        for r in results:
+            print(f"[marmalade-tts] Generated: {r['out']}", file=sys.stderr)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -532,6 +567,7 @@ Examples:
   marmalade-tts daemon start
   marmalade-tts init                             # set up + install engines
   marmalade-tts install matcha emojivoice        # add engines after init
+  marmalade-tts @chapters.txt --out-dir ./out/   # batch: one WAV per line
   eval "$(marmalade-tts --completion bash)"
 """,
     )
@@ -540,7 +576,14 @@ Examples:
     parser.add_argument("--text", "-t", default=None,
                         help="Text to synthesize (alternative to positional)")
     parser.add_argument("--out", metavar="FILE",
-                        help="Save WAV to file (default: play immediately)")
+                        help="Save WAV to file (default: play immediately). "
+                             "In batch mode (multi-line input), pass a printf "
+                             "pattern like 'chapter-%%03d.wav' to get one file "
+                             "per line.")
+    parser.add_argument("--out-dir", metavar="DIR", default=None,
+                        help="Write output WAVs into DIR. Files are auto-named "
+                             "(001.wav, 002.wav, …). Useful for batch mode "
+                             "(multi-line input).")
     parser.add_argument("--play", action="store_true",
                         help="Play audio even when --out is set")
     parser.add_argument("--speed", type=float, default=None,
@@ -638,24 +681,23 @@ Examples:
     if not text.strip():
         sys.exit("[marmalade-tts] No text to synthesize")
 
-    # ── Preprocessing ──
-    text = _resolve_preprocessing(text, args, eng_cfg, config, engine_name)
+    # ── Split into utterances ──
+    # Multi-line input → batch mode (one WAV per non-empty line). DELIBERATE
+    # implicit trigger — see memory project_batch_synthesis.
+    nonempty_lines = [ln for ln in text.splitlines() if ln.strip()]
+    utterances = nonempty_lines if len(nonempty_lines) > 1 else [text]
+    is_batch = len(utterances) > 1
 
     # ── Resolve voice ──
     voice = args.voice or voice_arg
 
-    # ── Output path ──
-    if args.out:
-        out_path = args.out
-        auto_play = False
-    else:
-        out_path = make_tmp_wav()
-        auto_play = config.get("defaults", {}).get("play", True)
+    # ── Output paths ──
+    out_paths, auto_play = _resolve_out_paths(args, len(utterances), config, parser)
 
     # ── Speed ──
     speed = args.speed or config.get("defaults", {}).get("speed", 1.0)
 
-    # ── Synthesize ──
+    # ── Synth kwargs (the same for every utterance in a batch) ──
     synth_kwargs = {"speed": speed}
     if voice:
         synth_kwargs["voice"] = voice
@@ -664,9 +706,7 @@ Examples:
     if args.speaker:
         synth_kwargs["speaker"] = args.speaker
 
-    engine.synthesize(text, out_path, **synth_kwargs)
-
-    # ── Effects ──
+    # ── Effects: same for every utterance ──
     # Precedence: --no-effects > --effect flags > engine defaults from config.
     if args.no_effects:
         effect_list = []
@@ -676,17 +716,32 @@ Examples:
         effect_list = (
             config.get("effects", {}).get("defaults", {}).get(engine_name, [])
         )
-    _apply_effects_if_any(out_path, effect_list, config)
+
+    # ── Synthesize each utterance ──
+    # Preprocessing runs per-line so an emoji on line 3 doesn't affect line 1,
+    # and a blank line after preprocessing is silently skipped.
+    results = []
+    for utt, out_path in zip(utterances, out_paths):
+        processed = _resolve_preprocessing(utt, args, eng_cfg, config, engine_name)
+        if not processed.strip():
+            continue
+        engine.synthesize(processed, out_path, **synth_kwargs)
+        _apply_effects_if_any(out_path, effect_list, config)
+        results.append({"out": out_path, "text": processed})
+
+    if not results:
+        sys.exit("[marmalade-tts] No text to synthesize after preprocessing")
 
     # ── Output reporting ──
-    _report_output(args, engine_name, voice, out_path, effect_list, text, eng_cfg)
+    _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch)
 
     # ── Playback ──
     should_play = (auto_play or args.play) and not args.no_play
     if should_play:
-        play_wav(out_path)
-        if not args.out and os.path.exists(out_path):
-            os.unlink(out_path)
+        for r in results:
+            play_wav(r["out"])
+            if not args.out and not args.out_dir and os.path.exists(r["out"]):
+                os.unlink(r["out"])
 
 
 if __name__ == "__main__":
