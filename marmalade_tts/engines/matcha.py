@@ -106,7 +106,10 @@ class MatchaEngine(Engine):
             if spk is not None:
                 cmd += ["--spk", str(int(spk))]
 
-            proc = subprocess.run(cmd, capture_output=True, env=env)
+            # cwd=tmpdir so the spectrogram .png matcha-tts writes alongside
+            # the .wav lands inside the tempdir we clean up below, not the
+            # user's current directory.
+            proc = subprocess.run(cmd, capture_output=True, env=env, cwd=tmpdir)
             if proc.returncode != 0:
                 sys.exit(f"[matcha] synthesis failed:\n"
                          f"{proc.stderr.decode(errors='replace')}")

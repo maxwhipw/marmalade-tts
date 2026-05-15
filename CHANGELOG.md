@@ -16,6 +16,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   `emojivoice`'s default profile so the emotion emoji survives
   preprocessing and reaches the engine.
 
+### Fixed
+- matcha / emojivoice subprocess invocations now run with `cwd` set to
+  their per-call tempdir, so the spectrogram `.png` that matcha-tts writes
+  alongside each `.wav` lands in the tempdir we clean up — not the user's
+  current directory. (Was leaking `utterance_NNN.png` files into cwd.)
+
 ## [0.5.0] — 2026-05-14
 
 Hands-off engine installation, and two new expressive engines.
