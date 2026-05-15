@@ -1,11 +1,13 @@
-"""Matcha-TTS engine — daemon client with subprocess fallback.
+"""Matcha-TTS engine — daemon client with one-shot subprocess fallback.
 
 Matcha-TTS is a fast flow-matching neural TTS by Shivam Mehta et al.
 https://github.com/shivammehta25/Matcha-TTS  (MIT)
 
-It lives in its own venv. The CLI writes auto-numbered WAVs into an
-output folder rather than to an exact path, so the subprocess path
-synthesises into a temp dir and moves the result to `out_path`.
+It lives in its own venv. The cold path runs `daemon/matcha-oneshot.py`
+inside that venv via the venv's Python directly — calling matcha-tts's
+Python API rather than its CLI. That avoids the upstream CLI's leak: it
+always writes a `.png` mel-spectrogram next to each `.wav` (no flag
+disables it). The one-shot writes only the WAV.
 
 Install:  marmalade-tts install matcha
   (creates the Python 3.11 venv, installs matcha-tts + espeak-ng, and
@@ -13,27 +15,20 @@ Install:  marmalade-tts install matcha
   provisions 3.11 via uv. See marmalade_tts/installer.py.)
 """
 
-import glob
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 
 from . import Engine
 from .. import daemon as dmgr
 
 MATCHA_VENV = os.path.expanduser("~/.local/share/matcha-tts-venv")
-MATCHA_BIN = os.path.join(MATCHA_VENV, "bin", "matcha-tts")
+VENV_PYTHON = os.path.join(MATCHA_VENV, "bin", "python")
+ONESHOT_SCRIPT = "matcha-oneshot.py"
 
 # Built-in model names that matcha-tts auto-downloads on first use.
 MODELS = ["matcha_ljspeech", "matcha_vctk"]
 DEFAULT_MODEL = "matcha_ljspeech"
-
-# Universal vocoder — works with every Matcha checkpoint, auto-downloads.
-VOCODER = "hifigan_univ_v1"
-STEPS = 10
-TEMPERATURE = 0.667
 
 
 def _is_checkpoint_path(model: str) -> bool:
@@ -67,60 +62,44 @@ class MatchaEngine(Engine):
             dmgr.synthesize("matcha", request, auto_start=True, timeout=120.0)
             return
 
-        # ── Subprocess fallback ──
-        if not os.path.exists(MATCHA_BIN):
+        # ── One-shot subprocess fallback ──
+        if not os.path.exists(VENV_PYTHON):
             sys.exit(
                 f"[matcha] matcha-tts venv not found at {MATCHA_VENV}\n"
                 f"  Run: marmalade-tts install matcha"
+            )
+
+        script = dmgr._find_daemon_script(ONESHOT_SCRIPT)
+        if not os.path.exists(script):
+            sys.exit(
+                f"[matcha] one-shot script not found: {script}\n"
+                f"  Reinstall: bash install.sh"
             )
 
         env = os.environ.copy()
         if self.device == "cpu":
             env["CUDA_VISIBLE_DEVICES"] = ""
 
-        # The CLI writes <output_folder>/utterance_NNN.wav (plus a .png
-        # spectrogram), not an exact path — synthesise into a fresh temp dir
-        # and move the single .wav result to out_path.
-        tmpdir = tempfile.mkdtemp(prefix="marmalade-matcha-")
-        try:
-            cmd = [
-                MATCHA_BIN,
-                "--text", text,
-                "--output_folder", tmpdir,
-                "--vocoder", VOCODER,
-                "--steps", str(STEPS),
-                "--temperature", str(TEMPERATURE),
-            ]
-            if _is_checkpoint_path(model):
-                cmd += ["--checkpoint_path", os.path.expanduser(model)]
-            else:
-                cmd += ["--model", model]
-            if self.device == "cpu":
-                cmd += ["--cpu"]
-            # marmalade `speed` is a rate multiplier (1.4 = faster). Matcha's
-            # --speaking_rate is a *length scale* — higher means SLOWER — so
-            # invert. Only pass when non-default; otherwise Matcha uses the
-            # model's own default rate.
-            if speed and speed != 1.0:
-                cmd += ["--speaking_rate", str(1.0 / speed)]
-            if spk is not None:
-                cmd += ["--spk", str(int(spk))]
+        # marmalade `speed` is a rate multiplier (1.4 = faster). Matcha's
+        # length scale runs the other way (higher = slower), so invert.
+        # When speed == 1.0, pass 1.0 explicitly — the one-shot defaults to
+        # 1.0 too, so this is a no-op.
+        length_scale = (1.0 / speed) if (speed and speed != 1.0) else 1.0
 
-            # cwd=tmpdir so the spectrogram .png matcha-tts writes alongside
-            # the .wav lands inside the tempdir we clean up below, not the
-            # user's current directory.
-            proc = subprocess.run(cmd, capture_output=True, env=env, cwd=tmpdir)
-            if proc.returncode != 0:
-                sys.exit(f"[matcha] synthesis failed:\n"
-                         f"{proc.stderr.decode(errors='replace')}")
+        cmd = [
+            VENV_PYTHON, script,
+            "--text", text,
+            "--out", out_path,
+            "--model", os.path.expanduser(model) if _is_checkpoint_path(model) else model,
+            "--length-scale", str(length_scale),
+        ]
+        if spk is not None:
+            cmd += ["--spk", str(int(spk))]
 
-            wavs = glob.glob(os.path.join(tmpdir, "*.wav"))
-            if not wavs:
-                sys.exit(f"[matcha] no output produced\n"
-                         f"{proc.stderr.decode(errors='replace')}")
-            shutil.move(wavs[0], out_path)
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
+        proc = subprocess.run(cmd, capture_output=True, env=env)
+        if proc.returncode != 0:
+            sys.exit(f"[matcha] synthesis failed:\n"
+                     f"{proc.stderr.decode(errors='replace')}")
 
     def list_voices(self):
         print("Matcha-TTS models (auto-download on first use):")

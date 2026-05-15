@@ -5,6 +5,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **matcha / emojivoice cold path now calls Matcha-TTS's Python API
+  directly** instead of shelling out to the upstream `matcha-tts` CLI.
+  The CLI is research-codebase residue from ICASSP 2024 — it always
+  writes a `.png` mel-spectrogram alongside each `.wav` and has no flag
+  to disable that. Two new one-shot scripts (`daemon/matcha-oneshot.py`,
+  `daemon/emojivoice-oneshot.py`) share a `daemon/_matcha_synth.py`
+  helper with the long-running daemons, so warm and cold paths now go
+  through the same code. No PNGs leak anywhere. `matcha-tts` is pinned
+  in the installer (`>=0.0.7,<0.1`) since the Python API surface is less
+  stable than the CLI's.
+
 ### Added
 - **Batch synthesis (universal).** Multi-line text input — from `@file.txt`,
   `--stdin`, or `--text "a\nb"` — now produces one WAV per non-empty line.

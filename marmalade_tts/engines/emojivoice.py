@@ -13,32 +13,33 @@ It runs on Matcha-TTS, installed in its own venv (duplicated from the
 `matcha` engine on purpose — keeping the venvs separate is simpler and
 less fragile than sharing one).
 
+The cold path runs `daemon/emojivoice-oneshot.py` inside the venv via the
+venv's Python directly — calling matcha-tts's Python API rather than its
+CLI. That avoids the upstream CLI's leak: it always writes a `.png`
+mel-spectrogram next to each `.wav` (no flag disables it). The one-shot
+writes only the WAV.
+
 Install:  marmalade-tts install emojivoice
   (creates the Python 3.11 venv, installs matcha-tts + espeak-ng, fetches
   the paige speaker checkpoint, and self-tests. See
   marmalade_tts/installer.py.)
 """
 
-import glob
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 
 from . import Engine
 from .. import daemon as dmgr
 
 EMOJIVOICE_VENV = os.path.expanduser("~/.local/share/emojivoice-venv")
-MATCHA_BIN = os.path.join(EMOJIVOICE_VENV, "bin", "matcha-tts")
+VENV_PYTHON = os.path.join(EMOJIVOICE_VENV, "bin", "python")
+ONESHOT_SCRIPT = "emojivoice-oneshot.py"
 MODELS_DIR = os.path.expanduser("~/.local/share/emojivoice/models")
 
-VOCODER = "hifigan_univ_v1"
-STEPS = 10
-TEMPERATURE = 0.667
-# Matcha's --speaking_rate is a *length scale* (higher = slower). EmojiVoice
-# tunes a shorter length scale for more expressive delivery — this matches
-# upstream feel_me.py's SPEAKING_RATE = 0.8.
+# Matcha's length scale runs higher = slower; EmojiVoice tunes a shorter
+# scale for more expressive delivery — matches upstream feel_me.py's
+# SPEAKING_RATE = 0.8.
 DEFAULT_LENGTH_SCALE = 0.8
 
 # Speaker checkpoints. Only "paige" ships: its emoji -> speaker-id map is
@@ -107,6 +108,8 @@ class EmojiVoiceEngine(Engine):
     def synthesize(self, text: str, out_path: str, voice: str = None,
                    speed: float = 1.0, **kwargs):
         v = voice or self.voice
+        # parse_emoji must run here (in marmalade-tts's process), not in
+        # the engine venv — EMOJI_SPK lives in this package, not the venv.
         spk, clean_text = parse_emoji(text, v)
         # Matcha-TTS (via espeak) chokes on parentheses — strip them.
         clean_text = clean_text.replace("(", "").replace(")", "")
@@ -124,8 +127,8 @@ class EmojiVoiceEngine(Engine):
             dmgr.synthesize("emojivoice", request, auto_start=True, timeout=120.0)
             return
 
-        # ── Subprocess fallback ──
-        if not os.path.exists(MATCHA_BIN):
+        # ── One-shot subprocess fallback ──
+        if not os.path.exists(VENV_PYTHON):
             sys.exit(
                 f"[emojivoice] venv not found at {EMOJIVOICE_VENV}\n"
                 f"  Run: marmalade-tts install emojivoice"
@@ -136,42 +139,30 @@ class EmojiVoiceEngine(Engine):
                 f"[emojivoice] speaker checkpoint not found:\n  {ckpt}\n"
                 f"  Run: marmalade-tts install emojivoice"
             )
+        script = dmgr._find_daemon_script(ONESHOT_SCRIPT)
+        if not os.path.exists(script):
+            sys.exit(
+                f"[emojivoice] one-shot script not found: {script}\n"
+                f"  Reinstall: bash install.sh"
+            )
 
         env = os.environ.copy()
         if self.device == "cpu":
             env["CUDA_VISIBLE_DEVICES"] = ""
 
-        tmpdir = tempfile.mkdtemp(prefix="marmalade-emojivoice-")
-        try:
-            cmd = [
-                MATCHA_BIN,
-                "--text", clean_text,
-                "--checkpoint_path", ckpt,
-                "--output_folder", tmpdir,
-                "--vocoder", VOCODER,
-                "--steps", str(STEPS),
-                "--temperature", str(TEMPERATURE),
-                "--speaking_rate", str(length_scale),
-                "--spk", str(spk),
-            ]
-            if self.device == "cpu":
-                cmd += ["--cpu"]
+        cmd = [
+            VENV_PYTHON, script,
+            "--text", clean_text,
+            "--out", out_path,
+            "--checkpoint", ckpt,
+            "--spk", str(spk),
+            "--length-scale", str(length_scale),
+        ]
 
-            # cwd=tmpdir so the spectrogram .png matcha-tts writes alongside
-            # the .wav lands inside the tempdir we clean up below, not the
-            # user's current directory.
-            proc = subprocess.run(cmd, capture_output=True, env=env, cwd=tmpdir)
-            if proc.returncode != 0:
-                sys.exit(f"[emojivoice] synthesis failed:\n"
-                         f"{proc.stderr.decode(errors='replace')}")
-
-            wavs = glob.glob(os.path.join(tmpdir, "*.wav"))
-            if not wavs:
-                sys.exit(f"[emojivoice] no output produced\n"
-                         f"{proc.stderr.decode(errors='replace')}")
-            shutil.move(wavs[0], out_path)
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
+        proc = subprocess.run(cmd, capture_output=True, env=env)
+        if proc.returncode != 0:
+            sys.exit(f"[emojivoice] synthesis failed:\n"
+                     f"{proc.stderr.decode(errors='replace')}")
 
     def list_voices(self):
         print("EmojiVoice speakers:")

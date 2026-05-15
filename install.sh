@@ -27,14 +27,19 @@ chmod +x "$BIN_DIR/marmalade-tts"
 # -- Daemon scripts --
 echo "  → Installing daemon scripts to $DATA_DIR/daemon"
 mkdir -p "$DATA_DIR/daemon"
-for f in "$SCRIPT_DIR"/daemon/*-daemon.py "$SCRIPT_DIR"/daemon/_common.py; do
+# Pick up *-daemon.py (long-running), *-oneshot.py (cold-path engine
+# fallbacks), and any shared _-prefixed helper modules.
+for f in "$SCRIPT_DIR"/daemon/*-daemon.py \
+         "$SCRIPT_DIR"/daemon/*-oneshot.py \
+         "$SCRIPT_DIR"/daemon/_*.py; do
+    [ -f "$f" ] || continue
     cp "$f" "$DATA_DIR/daemon/"
     echo "    $(basename $f)"
 done
 
 # Remove legacy v0.4.2 layout files (scripts directly under DATA_DIR root)
 # so we don't ship two copies and confuse the daemon path resolver.
-for f in "$DATA_DIR"/*-daemon.py "$DATA_DIR"/_common.py; do
+for f in "$DATA_DIR"/*-daemon.py "$DATA_DIR"/*-oneshot.py "$DATA_DIR"/_*.py; do
     [ -f "$f" ] && rm -f "$f"
 done
 

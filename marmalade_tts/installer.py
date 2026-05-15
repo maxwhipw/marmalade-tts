@@ -116,12 +116,16 @@ INSTALL_RECIPES = {
         # Python 3.11 REQUIRED — matcha-tts does not build on 3.12.
         "python": "3.11",
         "venv": "~/.local/share/matcha-tts-venv",
+        # matcha-tts pinned to 0.0.7.x — the cold path now calls the
+        # matcha-tts Python API directly (load_matcha / load_vocoder /
+        # process_text / to_waveform), which is less stable than the CLI,
+        # so we pin to the range we've actually verified against.
         # torch < 2.6 REQUIRED — PyTorch 2.6 flipped torch.load's weights_only
         # default to True, and matcha-tts checkpoints embed an
         # omegaconf.DictConfig that isn't an allowed global, so checkpoint
         # loading raises UnpicklingError on torch >= 2.6. Pinning torch and
         # torchaudio together keeps uv's resolver from pulling a mismatched pair.
-        "pip": ["matcha-tts", "torch<2.6", "torchaudio<2.6"],
+        "pip": ["matcha-tts>=0.0.7,<0.1", "torch<2.6", "torchaudio<2.6"],
         "pip_post": [],
         "system_deps": ["espeak-ng"],
         "models": None,  # matcha-tts auto-downloads via its own MATCHA_URLS
@@ -130,11 +134,12 @@ INSTALL_RECIPES = {
     },
     "emojivoice": {
         # Python 3.11 REQUIRED — runs on matcha-tts (same 3.12 build failure).
+        # matcha-tts pinned — see the matcha recipe above for why.
         # torch < 2.6 REQUIRED — same matcha-tts checkpoint-load issue (see
         # the matcha recipe); emojivoice loads its paige .ckpt the same way.
         "python": "3.11",
         "venv": "~/.local/share/emojivoice-venv",
-        "pip": ["matcha-tts", "torch<2.6", "torchaudio<2.6"],
+        "pip": ["matcha-tts>=0.0.7,<0.1", "torch<2.6", "torchaudio<2.6"],
         "pip_post": [],
         "system_deps": ["espeak-ng"],
         "models": ["emojivoice-paige"],
