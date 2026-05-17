@@ -15,12 +15,18 @@ Uses num2words (already installed as a dep of kittentts) for number verbalizatio
 """
 
 import html as _html
+import os
 import re
 
 try:
     from num2words import num2words
 except ImportError:
     num2words = None
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 # ── Rule definitions ─────────────────────────────────────────────────────────
 # Each rule: (name, description, regex_pattern, replacement_function)
@@ -286,6 +292,67 @@ def _html_strip(text: str) -> str:
     return text
 
 
+# ── Pronunciation dictionary ─────────────────────────────────────────────────
+# User-editable YAML at ~/.config/marmalade-tts/pronunciations.yaml. Loaded
+# lazily on first use, cached for the rest of the process — restart marmalade
+# to pick up edits.
+
+PRONUNCIATIONS_PATH = os.path.expanduser(
+    "~/.config/marmalade-tts/pronunciations.yaml"
+)
+
+_PRONUNCIATIONS: dict | None = None
+_PRONOUNCE_RE: re.Pattern | None = None
+
+
+def _load_pronunciations() -> tuple[dict, re.Pattern | None]:
+    """Load the pronunciation dict and build the alternation regex once per
+    process. Missing file, empty dict, or unavailable PyYAML → ({}, None) and
+    the rule becomes a no-op."""
+    global _PRONUNCIATIONS, _PRONOUNCE_RE
+    if _PRONUNCIATIONS is not None:
+        return _PRONUNCIATIONS, _PRONOUNCE_RE
+
+    data: dict = {}
+    if yaml is not None and os.path.isfile(PRONUNCIATIONS_PATH):
+        try:
+            with open(PRONUNCIATIONS_PATH) as f:
+                loaded = yaml.safe_load(f) or {}
+            if isinstance(loaded, dict):
+                data = {str(k): str(v) for k, v in loaded.items()}
+        except Exception:
+            data = {}
+
+    _PRONUNCIATIONS = data
+    if not data:
+        _PRONOUNCE_RE = None
+        return _PRONUNCIATIONS, _PRONOUNCE_RE
+
+    # Sort longest-first so "marmalade-tts" wins over "marmalade".
+    keys = sorted(data.keys(), key=len, reverse=True)
+    alternation = "|".join(re.escape(k) for k in keys)
+    # \b handles word boundaries on both sides; keys may contain "-" but that
+    # is treated as a word boundary too in Python regex, which is what we want
+    # ("marmalade-tts" still bounds cleanly because there's a non-word char
+    # before "m" and after "s" in any normal sentence).
+    _PRONOUNCE_RE = re.compile(rf"\b(?:{alternation})\b", re.IGNORECASE)
+    return _PRONUNCIATIONS, _PRONOUNCE_RE
+
+
+def _pronounce(text: str) -> str:
+    """Substitute whole-word, case-insensitive matches from the user
+    pronunciation dictionary. Replacement is the dict value verbatim."""
+    data, pattern = _load_pronunciations()
+    if not pattern:
+        return text
+    lowered = {k.lower(): v for k, v in data.items()}
+
+    def _replace(m: re.Match) -> str:
+        return lowered.get(m.group(0).lower(), m.group(0))
+
+    return pattern.sub(_replace, text)
+
+
 # Emoji codepoint ranges, broad enough to catch faces, symbols, dingbats,
 # flags (regional indicators), the zero-width joiner used in emoji sequences,
 # variation selector-16, and the keycap combining mark.
@@ -340,6 +407,9 @@ RULES = {
                       "Strip markdown formatting (bold/italic/code/link/heading/list/quote)"),
     "html":          (None, _html_strip,
                       "Strip HTML tags and decode entities (&amp; → &)"),
+    "pronounce":     (None, _pronounce,
+                      "User pronunciation dictionary "
+                      "(~/.config/marmalade-tts/pronunciations.yaml)"),
 }
 
 # ── Engine default profiles ──────────────────────────────────────────────────
@@ -351,6 +421,7 @@ ENGINE_PROFILES = {
         "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
+        "pronounce",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "kokoro": [
@@ -358,6 +429,7 @@ ENGINE_PROFILES = {
         "markdown", "html",
         "currency", "percentage", "time", "date",
         "email", "url", "filename",
+        "pronounce",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "piper": [
@@ -365,6 +437,7 @@ ENGINE_PROFILES = {
         "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
+        "pronounce",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "coqui": [
@@ -372,6 +445,7 @@ ENGINE_PROFILES = {
         "markdown", "html",
         "currency", "percentage", "time", "date",
         "email", "url", "filename", "abbreviation",
+        "pronounce",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "pocket": [
@@ -379,6 +453,7 @@ ENGINE_PROFILES = {
         "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
+        "pronounce",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "matcha": [
@@ -386,6 +461,7 @@ ENGINE_PROFILES = {
         "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
+        "pronounce",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "emojivoice": [
@@ -397,6 +473,7 @@ ENGINE_PROFILES = {
         "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
+        "pronounce",
         "math", "ampersand", "hashtag",
     ],
 }
@@ -442,6 +519,7 @@ def preprocess(text: str, engine: str = None, rules: list = None) -> str:
         "abbreviation",                             # abbreviations before filename (both have dots)
         "filename",                                 # filenames after abbreviations
         "number",                                   # bare numbers last
+        "pronounce",                                # user dict — operates on already-normalized text
         "math", "ampersand", "hashtag",
     ]
 

@@ -398,6 +398,78 @@ class TestHTML:
         assert "<script>" in result
 
 
+# ── Pronunciation dictionary ─────────────────────────────────────────────────
+
+class TestPronounce:
+    """The `pronounce` rule reads a user YAML and does whole-word, case-
+    insensitive substitution. All tests share a fixture that points the
+    loader at a tmp file and resets the module-level cache."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_cache(self, monkeypatch, tmp_path):
+        import marmalade_tts.preprocessing as pp
+        self.path = tmp_path / "pronunciations.yaml"
+        monkeypatch.setattr(pp, "PRONUNCIATIONS_PATH", str(self.path))
+        monkeypatch.setattr(pp, "_PRONUNCIATIONS", None)
+        monkeypatch.setattr(pp, "_PRONOUNCE_RE", None)
+        yield
+        # Restore None after test so the next test gets a fresh load.
+        monkeypatch.setattr(pp, "_PRONUNCIATIONS", None)
+        monkeypatch.setattr(pp, "_PRONOUNCE_RE", None)
+
+    def _write(self, body: str):
+        self.path.write_text(body)
+
+    def test_basic_replacement(self):
+        self._write("kubectl: kube-cuttle\n")
+        result = preprocess("run kubectl now", rules=["pronounce"])
+        assert "kube-cuttle" in result
+        assert "kubectl" not in result
+
+    def test_case_insensitive(self):
+        self._write("regex: REE-jex\n")
+        result = preprocess("Regex and REGEX and regex", rules=["pronounce"])
+        # All three forms get replaced with the verbatim value.
+        assert result.count("REE-jex") == 3
+
+    def test_word_boundary_no_partial_match(self):
+        # "regex" must NOT match inside "regexp".
+        self._write("regex: REE-jex\n")
+        result = preprocess("regexp is not regex", rules=["pronounce"])
+        assert "regexp" in result
+        assert "REE-jex" in result
+
+    def test_hyphenated_key_matches(self):
+        self._write("marmalade-tts: marmalade T T S\n")
+        result = preprocess("install marmalade-tts today", rules=["pronounce"])
+        assert "marmalade T T S" in result
+        assert "marmalade-tts" not in result
+
+    def test_longest_first_ordering(self):
+        # "marmalade-tts" must win over "marmalade" when both are keys.
+        self._write("marmalade: jam\nmarmalade-tts: marmalade T T S\n")
+        result = preprocess("marmalade-tts is great", rules=["pronounce"])
+        assert "marmalade T T S" in result
+        # The "marmalade" key must not have eaten the prefix first.
+        assert "jam-tts" not in result
+
+    def test_missing_file_is_noop(self):
+        # No file at the path → rule does nothing, text untouched.
+        assert not self.path.exists()
+        text = "kubectl regex marmalade-tts"
+        assert preprocess(text, rules=["pronounce"]) == text
+
+    def test_empty_file_is_noop(self):
+        self._write("")
+        text = "anything goes here"
+        assert preprocess(text, rules=["pronounce"]) == text
+
+    def test_engine_profile_includes_pronounce(self):
+        # Every engine profile lists `pronounce`.
+        for engine, rules in ENGINE_PROFILES.items():
+            assert "pronounce" in rules, f"{engine} missing pronounce rule"
+
+
 # ── Engine profiles ──────────────────────────────────────────────────────────
 
 class TestEngineProfiles:
