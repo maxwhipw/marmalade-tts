@@ -122,6 +122,53 @@ class TestFindVoiceMatches:
         assert any(eng == "kokoro" and name in {"george", "lewis"}
                    for eng, name in top_names)
 
+    # ── word-token regression guards ────────────────────────────────────────
+    # Substring scoring used to make "male" match inside "female", which
+    # ranked female voices (Bella, paige) at the top of male-only queries.
+    # Tokenizing both sides on word characters drops that false positive.
+
+    def test_soothing_male_top_is_actually_male(self):
+        # Known male voices across the shipped engines. "soothing" isn't in
+        # any description, so only "male" should match — and it must NOT
+        # match inside "female".
+        male_voices = {
+            "george", "adam", "michael", "lewis", "kumo", "yunjian",
+            "marius", "javert", "jean",
+            "Jasper", "Bruno", "Hugo", "Leo",
+        }
+        matches = find_voice_matches("soothing male")
+        assert matches
+        top = matches[0]
+        assert top["name"] in male_voices, (
+            f"top result {top['engine']}/{top['name']} is not a male voice"
+        )
+        # And explicitly: Bella (kitten female) must not appear anywhere —
+        # she was the headline false positive under the old substring rule.
+        names = {m["name"] for m in matches}
+        assert "Bella" not in names
+        assert "paige" not in names
+
+    def test_mandarin_man_prefers_male_over_female(self):
+        # Under substring scoring xiaobei (female) and yunjian (male) tied
+        # at 2 for "mandarin man" → "mandarin" + "male"-in-"female".
+        # Tokenization makes yunjian win outright; xiaobei drops to "mandarin"
+        # only, or off the list entirely.
+        matches = find_voice_matches("mandarin man")
+        assert matches
+        top = matches[0]
+        assert (top["engine"], top["name"]) == ("kokoro", "yunjian")
+        # And the score gap must exist (no tie at the top).
+        if len(matches) > 1:
+            assert matches[0]["score"] > matches[1]["score"]
+
+    def test_voice_name_in_haystack_matches(self):
+        # The haystack includes the voice name token, so a bare name query
+        # finds the voice. (Regression guard for the tokenizer covering
+        # name as well as description.)
+        matches = find_voice_matches("kiki")
+        assert matches
+        assert (matches[0]["engine"], matches[0]["name"]) == ("kitten", "Kiki")
+
     def test_empty_description_returns_nothing(self):
         assert find_voice_matches("") == []
         assert find_voice_matches("   ") == []

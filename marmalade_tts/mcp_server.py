@@ -20,7 +20,6 @@ are unit-testable on their own. Only ``run()`` actually imports FastMCP.
 from __future__ import annotations
 
 import re
-from typing import Iterable
 
 from . import config as cfg_mod
 from .cli import ENGINE_CLASSES
@@ -141,17 +140,16 @@ _STOPWORDS = frozenset({
 })
 
 # Light synonym mapping — fold common variants onto the canonical term that
-# actually appears in our description text. Keeps the matcher inspectable.
+# actually appears in our description text. Only real remappings; identity
+# entries are redundant now that haystack + query share one tokenizer.
 _SYNONYMS = {
     "man": "male", "guy": "male", "boy": "male", "gentleman": "male", "men": "male",
     "woman": "female", "girl": "female", "lady": "female", "women": "female",
-    "british": "british",  # explicit no-op — leaves it as-is, just documents intent
-    "uk": "british", "english": "english",
-    "american": "american", "us": "american",
-    "deep": "deep", "low": "deep",
+    "uk": "british",
+    "us": "american",
+    "low": "deep",
     "high": "bright", "kid": "young", "child": "young",
-    "warm": "warm", "soft": "soft", "calm": "calm",
-    "narrator": "narrator", "narration": "narrator", "narrate": "narrator",
+    "narration": "narrator", "narrate": "narrator",
 }
 
 _TERM_RE = re.compile(r"[a-zA-Z]+")
@@ -176,10 +174,12 @@ def _tokenize(description: str) -> list[str]:
 def find_voice_matches(description: str, top_k: int = 3) -> list[dict]:
     """Score voices by keyword overlap with `description`. Top-k descending.
 
-    Pure substring scoring on the description text — "british" matches
-    "British English" inside george's description. Returns at most `top_k`
-    results, each with name, engine, score (int = matched-term count), and a
-    `why` field listing which terms matched.
+    Word-token set overlap on the description text — "british" matches
+    "British English" inside george's description, but "male" no longer
+    matches inside "female" (the earlier substring scoring did, which made
+    "soothing male" rank Bella at the top). Returns at most `top_k` results,
+    each with name, engine, score (matched-term count), and a `why` field
+    listing which terms matched.
     """
     terms = _tokenize(description)
     if not terms:
@@ -187,11 +187,13 @@ def find_voice_matches(description: str, top_k: int = 3) -> list[dict]:
 
     scored = []
     for (eng, name), meta in VOICE_DESCRIPTIONS.items():
-        # Search the full description text plus the language label (so
+        # Tokenize the haystack the same way as the query so we do set
+        # overlap, not substring match. Language label included so
         # "japanese" matches voices whose description says "Japanese
-        # female"; redundant for kokoro but harmless and future-proof).
-        haystack = (meta["description"] + " " + meta["language"] + " " + name).lower()
-        matched = [t for t in terms if t in haystack]
+        # female"; redundant for kokoro but harmless and future-proof.
+        haystack_text = meta["description"] + " " + meta["language"] + " " + name
+        haystack_tokens = set(_TERM_RE.findall(haystack_text.lower()))
+        matched = [t for t in terms if t in haystack_tokens]
         if not matched:
             continue
         scored.append({
