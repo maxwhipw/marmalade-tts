@@ -593,12 +593,25 @@ Examples:
                              "For piper and coqui, --voice is required (positional "
                              "voices are not supported).")
     parser.add_argument("--lang", default=None,
-                        help="Language code — kokoro only (a=American, b=British, "
-                             "j=Japanese, z=Mandarin). Defaults to the voice's "
-                             "natural language; pass a different code for an "
-                             "accent effect.")
+                        help="Language code. Kokoro uses single-letter codes "
+                             "(a=American, b=British, j=Japanese, z=Mandarin) "
+                             "and defaults to the voice's natural language. "
+                             "Coqui multilingual models use IETF codes "
+                             "(en, es, fr, …).")
     parser.add_argument("--speaker", default=None,
-                        help="Speaker id — piper multi-speaker models")
+                        help="Speaker id or name. Piper multi-speaker models "
+                             "take an integer; Coqui multi-speaker models "
+                             "(e.g. VITS-VCTK) take a name like 'p225'.")
+    parser.add_argument("--speaker-wav", dest="speaker_wav", default=None,
+                        help="Reference WAV for voice cloning. Coqui XTTS "
+                             "models clone the speaker from this file. "
+                             "(Pocket clones by passing the WAV as the voice "
+                             "directly — see `pocket --list`.)")
+    parser.add_argument("--emotion", default=None,
+                        help="Emotion label. Honored by Coqui emotion-aware "
+                             "models (Tortoise, some VITS variants); the "
+                             "label vocabulary is per-model. Silently "
+                             "ignored by models without emotion support.")
     # Presets
     preset_grp = parser.add_mutually_exclusive_group()
     preset_grp.add_argument("--fast", action="store_true", help="Fast preset")
@@ -705,6 +718,10 @@ Examples:
         synth_kwargs["lang"] = args.lang
     if args.speaker:
         synth_kwargs["speaker"] = args.speaker
+    if args.speaker_wav:
+        synth_kwargs["speaker_wav"] = args.speaker_wav
+    if args.emotion:
+        synth_kwargs["emotion"] = args.emotion
 
     # ── Effects: same for every utterance ──
     # Precedence: --no-effects > --effect flags > engine defaults from config.

@@ -1,0 +1,26 @@
+# marmalade-tts
+
+> Unified local TTS CLI: a single command (`marmalade-tts`) wraps seven
+> local TTS engines (kitten, kokoro, piper, coqui, pocket, matcha,
+> emojivoice) behind one interface, one config file, one set of flags.
+> No cloud APIs. Each engine installs into its own venv.
+
+Repo: https://github.com/maxwhipw/marmalade-tts
+License: MIT
+
+## Documentation
+
+- [README.md](README.md): project overview, quick install, examples
+- [INSTALL.md](INSTALL.md): platform-specific install paths (pip, .deb, AUR, docker)
+- [docs/engine-knobs.md](docs/engine-knobs.md): every per-engine parameter (voice, speed, expressivity knobs, model-specific options) and how to pass it
+- [docs/ROADMAP.md](docs/ROADMAP.md): planned and in-flight work
+- [ENGINE-GUIDE.md](ENGINE-GUIDE.md): step-by-step guide for adding a new TTS engine (14-file checklist + speed-handling convention)
+- [config-default.yaml](config-default.yaml): annotated default config — copy to `~/.config/marmalade-tts/config.yaml`
+- [SPEC.md](SPEC.md): CLI surface specification
+- [PACKAGING.md](PACKAGING.md): notes for distro packagers
+
+## Optional
+
+- [CHANGELOG.md](CHANGELOG.md): version history
+- [CONTRIBUTING.md](CONTRIBUTING.md): contribution guide
+- [SECURITY.md](SECURITY.md): security policy

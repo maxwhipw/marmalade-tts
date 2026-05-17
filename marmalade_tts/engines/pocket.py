@@ -20,7 +20,7 @@ import os
 import subprocess
 import sys
 
-from . import Engine
+from . import Engine, sox_tempo
 
 VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
@@ -70,6 +70,10 @@ class PocketEngine(Engine):
         proc = subprocess.run(cmd, capture_output=True, env=env)
         if proc.returncode != 0:
             sys.exit(f"[pocket] synthesis failed:\n{proc.stderr.decode(errors='replace')}")
+
+        # Pocket-TTS has no native speed knob — honor --speed via sox.
+        # See ENGINE-GUIDE.md "Honoring --speed".
+        sox_tempo(out_path, speed)
 
     def list_voices(self):
         print("Pocket TTS voices (built-in):")

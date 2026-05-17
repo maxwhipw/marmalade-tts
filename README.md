@@ -125,6 +125,10 @@ them in `marmalade-tts init`) — marmalade-tts works with whichever are
 present. There's no need to install all of them; even just one is enough to
 be useful.
 
+For the full per-engine parameter reference (every voice, speed, and
+expressivity knob, plus what each Coqui model honors), see
+**[docs/engine-knobs.md](docs/engine-knobs.md)**.
+
 ---
 
 ## Quick Start

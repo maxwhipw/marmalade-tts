@@ -94,6 +94,51 @@ class PocketEngine(Engine):
 Forgetting this means `isinstance(engine, Engine)` checks fail and the engine
 won't behave consistently across the codebase.
 
+### Honoring `--speed` (required)
+
+Every engine MUST honor the `speed` kwarg passed to `synthesize()`. The
+contract is non-negotiable: a user who passes `--speed 1.4` expects faster
+audio, regardless of which engine they picked.
+
+Two paths, in order of preference:
+
+1. **Native speed** — pass through to the underlying library's
+   tempo/length-scale parameter. Examples in-tree:
+
+   | Engine     | Native knob                                  |
+   |------------|----------------------------------------------|
+   | kitten     | `KittenTTS.generate(..., speed=...)`         |
+   | kokoro     | `pipeline(..., speed=...)` / CLI `--speed`   |
+   | piper      | `SynthesisConfig.length_scale = 1.0 / speed` |
+   | matcha     | `length_scale = 1.0 / speed`                 |
+   | emojivoice | `length_scale = 1.0 / speed`                 |
+   | coqui      | `TTS.tts_to_file(..., speed=...)`            |
+
+   Note: matcha-family `length_scale` is inverted (higher = slower) — divide.
+
+2. **sox fallback** — if upstream has no native knob, post-process the
+   WAV with the shared helper:
+
+   ```python
+   from . import Engine, sox_tempo
+
+   def synthesize(self, text, out_path, speed=1.0, **kwargs):
+       # ... write out_path via the underlying library
+       sox_tempo(out_path, speed)   # no-op when speed == 1.0
+   ```
+
+   `sox_tempo` preserves pitch (it's sox's `tempo` effect, not `speed`).
+   If sox isn't installed it warns once on stderr and leaves the file
+   untouched — synthesis still succeeds, the audio just plays at the
+   original rate.
+
+   Pocket is the in-tree example: `pocket-tts`'s API has no speed
+   parameter, so `pocket.py` uses `sox_tempo` after writing the WAV.
+
+**Anti-pattern:** accepting `speed` in your signature and then ignoring
+it. This silently breaks the user's `--speed` flag. If you genuinely
+can't honor it, raise an explicit error — don't lie.
+
 ---
 
 ## Step 2 — Register in `cli.py`

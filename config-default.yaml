@@ -53,11 +53,26 @@ engines:
     device: cpu
     model: ~/.local/share/piper/voices/en_US-lessac-medium.onnx
     daemon: false
+    # Expressivity knobs (config-only; same pattern as matcha steps/temperature).
+    # noise_scale controls timbre variation per utterance (default 0.667 —
+    # lower = more monotone but consistent, higher = more lively but variable).
+    # noise_w_scale controls per-phoneme duration variation (default 0.8 —
+    # lower = robotic pacing, higher = more natural cadence).
+    # noise_scale: 0.667
+    # noise_w_scale: 0.8
 
   coqui:
     device: cpu
     model: tts_models/en/ljspeech/tacotron2-DDC
     daemon: false
+    # Model-specific knobs. Coqui passes these straight through to
+    # TTS.tts_to_file — each model honors a different subset. See
+    # docs/engine-knobs.md for the model→knob compatibility table.
+    #   speaker: "p225"          # name, multi-speaker models like VITS-VCTK
+    #   speaker_idx: 0           # integer alternative to `speaker`
+    #   language: "en"           # IETF code, multilingual models like XTTS
+    #   speaker_wav: ~/refs/me.wav  # reference WAV for XTTS voice cloning
+    #   emotion: "Happy"         # Tortoise + some VITS variants
 
   pocket:
     device: cpu

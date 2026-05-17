@@ -70,6 +70,8 @@ include = [
     "PACKAGING.md",
     "SPEC.md",
     "ENGINE-GUIDE.md",
+    "docs",
+    "llms.txt",
 ]
 
 [tool.pytest.ini_options]

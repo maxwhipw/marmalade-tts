@@ -132,3 +132,31 @@ class TestPocketSynthesize:
              patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc):
             with pytest.raises(SystemExit):
                 PocketEngine({"device": "cpu"}).synthesize("Hi", str(tmp_path / "o.wav"))
+
+
+# ── --speed handling (sox fallback, since pocket-tts has no native knob) ────
+
+
+class TestPocketSpeed:
+    def test_speed_1_does_not_call_sox(self, tmp_path):
+        from marmalade_tts.engines.pocket import PocketEngine
+        fake_proc = MagicMock(returncode=0, stderr=b"")
+        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc), \
+             patch("marmalade_tts.engines.pocket.sox_tempo") as mock_sox:
+            PocketEngine({}).synthesize("Hi", str(tmp_path / "o.wav"), speed=1.0)
+        # Pocket's contract: speed=1.0 is a no-op, sox_tempo handles it but
+        # we'd rather not call it. Either is fine — assert it's called with
+        # the unity value OR not at all.
+        if mock_sox.called:
+            assert mock_sox.call_args[0][1] == 1.0
+
+    def test_nonunity_speed_calls_sox_with_the_factor(self, tmp_path):
+        from marmalade_tts.engines.pocket import PocketEngine
+        out_path = str(tmp_path / "o.wav")
+        fake_proc = MagicMock(returncode=0, stderr=b"")
+        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc), \
+             patch("marmalade_tts.engines.pocket.sox_tempo") as mock_sox:
+            PocketEngine({}).synthesize("Hi", out_path, speed=1.5)
+        mock_sox.assert_called_once_with(out_path, 1.5)

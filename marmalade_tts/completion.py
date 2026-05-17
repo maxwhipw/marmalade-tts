@@ -22,7 +22,10 @@ CONFIG_PATHS = [
     "engines.kokoro.voice", "engines.kokoro.lang", "engines.kokoro.device",
     "engines.kokoro.daemon",
     "engines.piper.model", "engines.piper.device", "engines.piper.daemon",
+    "engines.piper.noise_scale", "engines.piper.noise_w_scale",
     "engines.coqui.model", "engines.coqui.device", "engines.coqui.daemon",
+    "engines.coqui.speaker", "engines.coqui.speaker_idx", "engines.coqui.language",
+    "engines.coqui.speaker_wav", "engines.coqui.emotion",
     "engines.pocket.voice", "engines.pocket.device",
     "engines.matcha.model", "engines.matcha.device", "engines.matcha.daemon",
     "engines.matcha.steps", "engines.matcha.temperature",
@@ -73,6 +76,7 @@ _marmalade_tts() {{
     local config_paths="{config_paths}"
     local effect_names="{effect_names}"
     local flags="--out --play --no-play --speed --voice --lang --speaker \\
+                 --speaker-wav --emotion \\
                  --fast --balanced --quality \\
                  --effect --no-effects --list-effects --list \\
                  --preprocessing --no-preprocessing \\
@@ -153,8 +157,8 @@ _marmalade_tts() {{
         return
     fi
 
-    # File completion for --out
-    if [[ "$prev" == "--out" ]]; then
+    # File completion for --out and --speaker-wav (both take file paths)
+    if [[ "$prev" == "--out" || "$prev" == "--speaker-wav" ]]; then
         _filedir
         return
     fi
@@ -220,7 +224,9 @@ _marmalade-tts() {{
         '--speed[Speech speed]:speed:' \\
         '--voice[Voice/model override]:voice:->voiceflag' \\
         '--lang[Language code]:lang:(a b j z)' \\
-        '--speaker[Speaker ID]:id:' \\
+        '--speaker[Speaker ID or name]:id:' \\
+        '--speaker-wav[Reference WAV for voice cloning (Coqui XTTS)]:file:_files' \\
+        '--emotion[Emotion label (Coqui emotion-aware models)]:emotion:' \\
         '--fast[Fast preset]' \\
         '--balanced[Balanced preset]' \\
         '--quality[Quality preset]' \\

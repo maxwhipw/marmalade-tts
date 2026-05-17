@@ -24,6 +24,16 @@ class PiperEngine(Engine):
         self.cfg = cfg
         self.model = cfg.get("model")
         self.use_daemon = cfg.get("daemon", False)
+        # Expressivity knobs (config-only, no CLI flag — same precedent as
+        # matcha's steps/temperature). None means "use Piper's default".
+        #   noise_scale   — timbre variation per utterance (default 0.667).
+        #                   Lower = more monotone but consistent; higher =
+        #                   more lively but more variable.
+        #   noise_w_scale — per-phoneme duration variation (default 0.8).
+        #                   Lower = more robotic pacing; higher = more
+        #                   natural cadence variation.
+        self.noise_scale = cfg.get("noise_scale")
+        self.noise_w_scale = cfg.get("noise_w_scale")
 
     def _find_model(self) -> str:
         if self.model:
@@ -36,11 +46,19 @@ class PiperEngine(Engine):
         return None
 
     def synthesize(self, text: str, out_path: str, speed: float = 1.0,
-                   speaker: str = None, model: str = None, **kwargs):
+                   speaker: str = None, voice: str = None,
+                   model: str = None, **kwargs):
+        # The CLI passes voice=; older callers pass model=. Treat them as
+        # synonyms — both point at a .onnx voice model. Matches matcha/coqui.
+        model = model or voice
         if self.use_daemon:
             request = {"text": text, "speed": speed, "out": out_path}
             if speaker is not None:
                 request["speaker"] = speaker
+            if self.noise_scale is not None:
+                request["noise_scale"] = float(self.noise_scale)
+            if self.noise_w_scale is not None:
+                request["noise_w_scale"] = float(self.noise_w_scale)
             dmgr.synthesize("piper", request, auto_start=True)
             return
 
@@ -67,6 +85,10 @@ class PiperEngine(Engine):
             cmd += ["--length-scale", str(1.0 / speed)]
         if speaker is not None:
             cmd += ["--speaker", str(speaker)]
+        if self.noise_scale is not None:
+            cmd += ["--noise-scale", str(float(self.noise_scale))]
+        if self.noise_w_scale is not None:
+            cmd += ["--noise-w-scale", str(float(self.noise_w_scale))]
 
         proc = subprocess.run(cmd, input=text.encode(), capture_output=True)
         if proc.returncode != 0:

@@ -38,11 +38,16 @@ DEFAULT_CONFIG = {
             "device": "cpu",
             "model": "~/.local/share/piper/voices/en_US-lessac-medium.onnx",
             "daemon": False,
+            # noise_scale: 0.667    # expressivity (lower = monotone)
+            # noise_w_scale: 0.8    # cadence variation (lower = robotic)
         },
         "coqui": {
             "device": "cpu",
             "model": "tts_models/en/ljspeech/tacotron2-DDC",
             "daemon": False,
+            # speaker / speaker_idx / language / speaker_wav / emotion
+            # are optional; set the ones your model honors. See
+            # docs/engine-knobs.md for which models support what.
         },
         "pocket": {
             "device": "cpu",
