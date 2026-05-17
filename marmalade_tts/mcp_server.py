@@ -217,9 +217,7 @@ def synthesize_text(
     Returns ``{"out": path, "engine": name, "voice": resolved-voice}``.
     """
     # Lazy-import to avoid a circular import with cli at module load.
-    from . import preprocessing as pp
-    from . import effects as fx
-    from .cli import _apply_effects_if_any
+    from . import synth
 
     config = cfg_mod.load()
     engine_name = engine or config.get("defaults", {}).get("engine", "kitten")
@@ -232,40 +230,36 @@ def synthesize_text(
     eng_cfg = cfg_mod.engine_cfg(config, engine_name)
     eng = ENGINE_CLASSES[engine_name](eng_cfg)
 
-    # Preprocessing: match the CLI default (config flag, per-engine override).
-    do_preprocess = config.get("defaults", {}).get("preprocessing", True)
-    eng_pp = eng_cfg.get("preprocessing")
-    if isinstance(eng_pp, bool):
-        do_preprocess = eng_pp
-    elif isinstance(eng_pp, list):
-        do_preprocess = True
-
-    processed = text
-    if do_preprocess:
-        custom_rules = eng_cfg.get("preprocessing") if isinstance(eng_cfg.get("preprocessing"), list) else None
-        if custom_rules:
-            processed = pp.preprocess(text, engine=engine_name, rules=custom_rules)
-        else:
-            processed = pp.preprocess(text, engine=engine_name)
-
-    if not processed.strip():
-        raise ValueError("No text to synthesize after preprocessing")
-
     out = out_path or make_tmp_wav()
 
-    kwargs: dict = {"speed": speed}
+    synth_kwargs: dict = {"speed": speed}
     if voice:
-        kwargs["voice"] = voice
+        synth_kwargs["voice"] = voice
 
-    eng.synthesize(processed, out, **kwargs)
-
-    # Effects from engine defaults in config (CLI applies these by default).
+    # Engine-default effects (CLI applies these by default; match that here).
     effect_list = config.get("effects", {}).get("defaults", {}).get(engine_name, [])
-    if effect_list:
-        _apply_effects_if_any(out, effect_list, config)
+
+    # Route through the shared synth loop — same preprocessing rules,
+    # same effects pass, same duration measurement as the CLI. MCP always
+    # preprocesses (preprocess_mode=True); the per-engine rule list from
+    # config still flows through.
+    result = synth.synthesize_one(
+        text, out,
+        engine=eng,
+        engine_name=engine_name,
+        eng_cfg=eng_cfg,
+        config=config,
+        synth_kwargs=synth_kwargs,
+        effect_list=effect_list,
+        preprocess_mode=True,
+        custom_rules=None,
+    )
+
+    if result is None:
+        raise ValueError("No text to synthesize after preprocessing")
 
     return {
-        "out": out,
+        "out": result.out,
         "engine": engine_name,
         "voice": voice or eng_cfg.get("voice", ""),
     }

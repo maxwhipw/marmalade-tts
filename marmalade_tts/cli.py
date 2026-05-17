@@ -1,4 +1,13 @@
-"""CLI entrypoint for marmalade-tts."""
+"""CLI entrypoint for marmalade-tts.
+
+Coordinator only — parses argv, dispatches subcommands, resolves the
+config and engine, then hands off to ``synth.run_batch``. The pure
+helpers (text/voice/out paths/preset/effects/subtitles/aliases) live in
+``cli_helpers.py`` and the synthesis loop lives in ``synth.py``.
+
+The trailing re-exports keep test files (which patch
+``marmalade_tts.cli.<symbol>`` heavily) working without modification.
+"""
 
 import argparse
 import os
@@ -10,7 +19,6 @@ from . import config as cfg_mod
 from . import daemon
 from . import preprocessing as pp
 from .playback import play_wav, make_tmp_wav, wav_duration
-from . import subtitles as subs
 from .completion import bash_completion, zsh_completion
 from .engines.kitten import KittenEngine, VOICES as KITTEN_VOICES
 from .engines.kokoro import KokoroEngine, is_voice_token as kokoro_is_voice_token
@@ -20,6 +28,22 @@ from .engines.pocket import PocketEngine, VOICES as POCKET_VOICES
 from .engines.matcha import MatchaEngine
 from .engines.emojivoice import EmojiVoiceEngine, VOICES as EMOJIVOICE_VOICES
 from . import effects as fx
+
+from . import cli_helpers
+from . import synth as _synth
+from .cli_helpers import (
+    resolve_text,
+    looks_like_voice,
+    apply_preset,
+    resolve_text_and_voice,
+    resolve_preprocessing,
+    apply_effects_if_any,
+    resolve_out_paths,
+    print_aliases,
+    report_outputs,
+    write_subtitles_for_results,
+)
+from .synth import SynthResult, synthesize_one, run_batch
 
 ENGINE_CLASSES = {
     "kitten":     KittenEngine,
@@ -34,17 +58,19 @@ ENGINE_CLASSES = {
 ENGINE_NAMES = list(ENGINE_CLASSES.keys())
 
 
-# ── Text resolution ──────────────────────────────────────────────────────────
-
-def resolve_text(raw: str) -> str:
-    """Resolve text from literal, @filename, or - (stdin)."""
-    if raw == "-":
-        return sys.stdin.read()
-    if raw.startswith("@"):
-        path = raw[1:]
-        with open(path) as f:
-            return f.read()
-    return raw
+# ── Backward-compat private re-exports ──────────────────────────────────────
+# Older callers (mcp_server.synthesize_text used to do this) and a handful of
+# tests reach for the underscore names. Keep cheap aliases so the rename to
+# public symbols in cli_helpers / synth doesn't break anyone.
+_apply_preset = apply_preset
+_resolve_text_and_voice = resolve_text_and_voice
+_resolve_preprocessing = resolve_preprocessing
+_apply_effects_if_any = apply_effects_if_any
+_resolve_out_paths = resolve_out_paths
+_print_aliases = print_aliases
+_report_outputs = report_outputs
+_write_subtitles = write_subtitles_for_results
+_synthesize_one = synthesize_one
 
 
 # ── Subcommand handlers ─────────────────────────────────────────────────────
@@ -333,372 +359,11 @@ def cmd_install(args: list):
         sys.exit(1)
 
 
-# ── Voice/model heuristic ───────────────────────────────────────────────────
+# ── Argument parser ─────────────────────────────────────────────────────────
 
-
-def looks_like_voice(engine: str, token: str) -> bool:
-    """Check if a positional token is a voice override rather than text.
-
-    Only engines whose voice names are unambiguously identifier-shaped
-    (not English text, not file paths) accept positional voices:
-
-      - kitten:      closed list of names
-      - kokoro:      closed list of bare names AND canonical IDs
-      - pocket:      closed list of names, OR a .wav / .safetensors file path
-      - emojivoice:  closed list of speaker names
-
-    piper, coqui and matcha voices are file paths / model specs that are
-    structurally too similar to user text. Use ``--voice`` for those.
-    """
-    if engine == "kitten":
-        return token in KITTEN_VOICES
-    if engine == "kokoro":
-        return kokoro_is_voice_token(token)
-    if engine == "pocket":
-        return (token in POCKET_VOICES
-                or token.endswith(".wav")
-                or token.endswith(".safetensors"))
-    if engine == "emojivoice":
-        return token in EMOJIVOICE_VOICES
-    return False
-
-
-# ── main() helpers ──────────────────────────────────────────────────────────
-
-
-def _apply_preset(eng_cfg: dict, engine_name: str, preset_name: str, config: dict) -> None:
-    """Mutate `eng_cfg` in place to apply a named preset (fast/balanced/quality)."""
-    if not preset_name:
-        return
-    preset_val = config.get("presets", {}).get(preset_name, {}).get(engine_name)
-    if not preset_val:
-        return
-    if engine_name == "kitten":
-        eng_cfg["model_size"] = preset_val
-    elif engine_name in ("kokoro", "pocket", "emojivoice"):
-        eng_cfg["voice"] = preset_val
-    else:
-        eng_cfg["model"] = preset_val
-
-
-def _resolve_text_and_voice(args, positional, engine_name, parser):
-    """Resolve (text, voice_arg) from --stdin / --text / positional args."""
-    voice_arg = None
-    if args.stdin:
-        return sys.stdin.read(), None
-    if args.text:
-        text = resolve_text(args.text)
-        if positional:
-            if looks_like_voice(engine_name, positional[0]) and len(positional) == 1:
-                voice_arg = positional[0]
-            else:
-                parser.error(
-                    "When --text is given, extra positional arguments are not "
-                    "accepted (only an optional voice token before the text)."
-                )
-        return text, voice_arg
-    if not positional:
-        parser.error("Provide text (or --text / @file / -)")
-
-    first, rest = positional[0], positional[1:]
-    if looks_like_voice(engine_name, first) and rest:
-        return resolve_text(" ".join(rest)), first
-    if looks_like_voice(engine_name, first) and not rest:
-        parser.error(
-            f"{first!r} looks like a voice but no text was given. "
-            f"Add text, or run `marmalade-tts {engine_name} --list` to see voices."
-        )
-    return resolve_text(" ".join(positional)), None
-
-
-def _resolve_preprocessing(text, args, eng_cfg, config, engine_name):
-    """Apply preprocessing per CLI flags and config. Returns the (possibly) transformed text."""
-    if args.no_preprocessing:
-        do_preprocess = False
-    elif args.preprocessing:
-        do_preprocess = True
-    else:
-        do_preprocess = config.get("defaults", {}).get("preprocessing", True)
-        eng_pp = eng_cfg.get("preprocessing")
-        if eng_pp is not None:
-            if isinstance(eng_pp, bool):
-                do_preprocess = eng_pp
-            elif isinstance(eng_pp, list):
-                do_preprocess = True
-
-    if not do_preprocess:
-        return text
-
-    custom_rules = eng_cfg.get("preprocessing")
-    if isinstance(custom_rules, list):
-        return pp.preprocess(text, engine=engine_name, rules=custom_rules)
-    return pp.preprocess(text, engine=engine_name)
-
-
-def _apply_effects_if_any(out_path, effect_list, config):
-    """Apply effect chain in place. Warns rather than failing on sox issues."""
-    if not effect_list:
-        return
-    if not fx.sox_available():
-        print(
-            "[marmalade-tts] Note: sox is not installed — audio effects were skipped.\n"
-            "  To enable effects: apt install sox   or   brew install sox",
-            file=sys.stderr,
-        )
-        return
-    try:
-        fx.apply_effects(out_path, out_path, effect_list, config)
-    except (ValueError, RuntimeError) as e:
-        print(f"[marmalade-tts] Effect warning: {e}", file=sys.stderr)
-
-
-def _resolve_out_paths(args, n: int, config: dict, parser):
-    """Resolve output paths for N utterances. Returns (paths, auto_play).
-
-    Rules (apply to single-utterance and batch alike — batch is just N>1):
-      --out PATTERN  (contains '%')   : printf-format with 1-based index.
-      --out FILE     (no '%')         : literal path; N must be 1.
-      --out-dir DIR                   : auto-name 001.wav, 002.wav, …
-      neither                          : a tmp WAV per utterance, auto-played.
-    """
-    if args.out and "%" in args.out:
-        return [args.out % (i + 1) for i in range(n)], False
-    if args.out_dir:
-        os.makedirs(args.out_dir, exist_ok=True)
-        width = max(3, len(str(n)))
-        return ([os.path.join(args.out_dir, f"{i + 1:0{width}d}.wav")
-                 for i in range(n)],
-                False)
-    if args.out:
-        if n != 1:
-            parser.error(
-                "Batch input (multi-line text) can't write into a single "
-                "--out file. Pass --out 'PATTERN-%03d.wav' (with a printf "
-                "format) or --out-dir DIR, or omit --out to play each line in "
-                "sequence."
-            )
-        return [args.out], False
-    return ([make_tmp_wav() for _ in range(n)],
-            config.get("defaults", {}).get("play", True))
-
-
-def _print_aliases(aliases: dict) -> None:
-    """Pretty-print the configured aliases. Used by --list-aliases."""
-    if not aliases:
-        print("No aliases configured.")
-        print()
-        print("Define them in ~/.config/marmalade-tts/config.yaml under `aliases:`,")
-        print("for example:")
-        print()
-        print("  aliases:")
-        print("    narrator:")
-        print("      engine: kokoro")
-        print("      voice: george")
-        print("      speed: 0.95")
-        print("      effects: [\"reverb=15\"]")
-        return
-    print("Configured aliases:")
-    print()
-    for name, spec in aliases.items():
-        spec = spec or {}
-        engine = spec.get("engine", "?")
-        bits = []
-        voice = spec.get("voice")
-        if voice:
-            bits.append(f"voice={voice}")
-        speed = spec.get("speed")
-        if speed is not None:
-            bits.append(f"speed={speed}×")
-        lang = spec.get("lang")
-        if lang:
-            bits.append(f"lang={lang}")
-        speaker = spec.get("speaker")
-        if speaker:
-            bits.append(f"speaker={speaker}")
-        emotion = spec.get("emotion")
-        if emotion:
-            bits.append(f"emotion={emotion}")
-        effects = spec.get("effects")
-        if effects:
-            bits.append(f"effects={effects}")
-        speaker_wav = spec.get("speaker_wav")
-        if speaker_wav:
-            bits.append(f"speaker_wav={speaker_wav}")
-        suffix = (" — " + ", ".join(bits)) if bits else ""
-        print(f"  {name} → {engine}{suffix}")
-
-
-def _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch):
-    """Print results in the user-requested format. For batch, --json prints
-    a JSON array (one element per utterance); for single, --json keeps the
-    same single-object shape it has always had."""
-    if args.json:
-        import json
-        payload = [{
-            "ok": True,
-            "version": __version__,
-            "engine": engine_name,
-            "voice": voice or eng_cfg.get("voice"),
-            "out": r["out"],
-            "effects": effect_list,
-            "text": r["text"],
-            "duration": r.get("duration", 0.0),
-        } for r in results]
-        print(json.dumps(payload if is_batch else payload[0]))
-    elif args.print_path:
-        for r in results:
-            print(r["out"])
-    elif not args.quiet:
-        for r in results:
-            print(f"[marmalade-tts] Generated: {r['out']}", file=sys.stderr)
-
-
-def _synthesize_one(utt, out_path, engine, args, eng_cfg, config,
-                    engine_name, effect_list, synth_kwargs):
-    """Run preprocessing → synth → effects → duration measurement for one
-    utterance. Returns the result dict (matching the existing shape consumed
-    by subtitles / --json / playback) or None if the preprocessed text is
-    empty (the line was just whitespace or got stripped to nothing).
-
-    Pulled out of main() so the sequential and streaming paths both call
-    into the same code and can't drift apart."""
-    processed = _resolve_preprocessing(utt, args, eng_cfg, config, engine_name)
-    if not processed.strip():
-        return None
-    engine.synthesize(processed, out_path, **synth_kwargs)
-    _apply_effects_if_any(out_path, effect_list, config)
-    # Measure duration AFTER effects — sox tempo/speed/fade change length.
-    try:
-        duration = wav_duration(out_path)
-    except Exception:
-        duration = 0.0
-    return {
-        "out": out_path,
-        "text": processed,
-        "raw_text": utt,
-        "duration": duration,
-    }
-
-
-def _write_subtitles(args, results):
-    """Emit --srt / --vtt files if requested. Both flags are independent —
-    passing both writes both. Cue text comes from `raw_text` (original
-    user input), so emoji/markdown that were stripped during preprocessing
-    still appear in the subtitle file the user sees."""
-    if not (args.srt or args.vtt):
-        return
-    texts = [r["raw_text"] for r in results]
-    durations = [r.get("duration", 0.0) for r in results]
-    cues = subs.build_cues(texts, durations)
-    if args.srt:
-        subs.write_srt(args.srt, cues)
-        if not args.quiet:
-            print(f"[marmalade-tts] Wrote subtitles: {args.srt}", file=sys.stderr)
-    if args.vtt:
-        subs.write_vtt(args.vtt, cues)
-        if not args.quiet:
-            print(f"[marmalade-tts] Wrote subtitles: {args.vtt}", file=sys.stderr)
-
-
-# ── Main ─────────────────────────────────────────────────────────────────────
-
-def main():
-    argv = sys.argv[1:]
-
-    # ── Quick intercepts (only when explicitly given as the first argument,
-    # so they can't trigger from text content like
-    # `marmalade-tts kokoro "tell me about --completion"`). ──
-    if argv and argv[0] == "--completion":
-        shell = argv[1] if len(argv) > 1 else "bash"
-        print(zsh_completion() if shell == "zsh" else bash_completion())
-        return
-
-    if argv and argv[0] == "config":
-        cmd_config(argv[1:])
-        return
-    if argv and argv[0] == "daemon":
-        cmd_daemon(argv[1:])
-        return
-    if argv and argv[0] == "init":
-        cmd_init(argv[1:])
-        return
-    if argv and argv[0] == "install":
-        cmd_install(argv[1:])
-        return
-    if argv and argv[0] == "mcp":
-        from . import mcp_server
-        try:
-            mcp_server.run()
-        except ImportError:
-            print("MCP support not installed. Run: pip install marmalade-tts[mcp]",
-                  file=sys.stderr)
-            sys.exit(1)
-        return
-    if argv and argv[0] == "--list-effects":
-        config_tmp = cfg_mod.load()
-        user_presets = config_tmp.get("effects", {}).get("presets", {})
-        fx.list_effects(user_presets)
-        return
-
-    if argv and argv[0] == "--list-aliases":
-        config_tmp = cfg_mod.load()
-        _print_aliases(config_tmp.get("aliases") or {})
-        return
-
-    # ── Alias expansion + default-engine injection ──
-    # Both need the config; load it once and share. Aliases are config-defined
-    # named bundles (engine + voice + speed + …) invoked positionally like an
-    # engine name. Engine names are reserved — an alias whose name collides
-    # with an engine name is ignored with a warning (config might be partial
-    # during edits; don't hard-fail).
-    alias_overrides = None
-    _config_tmp = None
-    if argv:
-        _config_tmp = cfg_mod.load()
-        aliases = _config_tmp.get("aliases") or {}
-        name = argv[0]
-        if name in aliases:
-            if name in ENGINE_NAMES:
-                # Reserved-name collision — engine wins, skip the alias.
-                print(
-                    f"[marmalade-tts] Warning: alias {name!r} shadows engine "
-                    f"name and is ignored.",
-                    file=sys.stderr,
-                )
-            else:
-                spec = aliases[name] or {}
-                engine = spec.get("engine")
-                if not engine:
-                    print(
-                        f"[marmalade-tts] Alias {name!r} has no 'engine' field.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
-                if engine not in ENGINE_NAMES:
-                    print(
-                        f"[marmalade-tts] Alias {name!r} references unknown "
-                        f"engine {engine!r}.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
-                # Rewrite argv so the rest of dispatch sees the engine name,
-                # and stash the rest of the alias spec for later merging.
-                argv[0] = engine
-                sys.argv = [sys.argv[0]] + argv
-                alias_overrides = {k: v for k, v in spec.items() if k != "engine"}
-
-    # ── If first token is not an engine name, inject default engine ──
-    # This enables: marmalade-tts "hello" (uses defaults.engine)
-    # and:          marmalade-tts --fast "hello"
-    first_is_engine = argv and argv[0] in ENGINE_NAMES
-    if not first_is_engine and argv:
-        if _config_tmp is None:
-            _config_tmp = cfg_mod.load()
-        default_eng = _config_tmp.get("defaults", {}).get("engine", "kitten")
-        argv.insert(0, default_eng)
-        sys.argv = [sys.argv[0]] + argv
-
-    # ── Parse ──
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the top-level argparse parser. Extracted so ``main()`` stays
+    readable — argparse setup is mostly help text and adds no real logic."""
     parser = argparse.ArgumentParser(
         prog="marmalade-tts",
         description="🍊 Unified local TTS — kitten | kokoro | piper | coqui | pocket | matcha | emojivoice",
@@ -814,7 +479,109 @@ Examples:
                         help="Read text from stdin (shorthand for passing -)")
     parser.add_argument("--no-play", action="store_true",
                         help="Never play audio, even if defaults.play is true")
+    return parser
 
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    argv = sys.argv[1:]
+
+    # ── Quick intercepts (only when explicitly given as the first argument,
+    # so they can't trigger from text content like
+    # `marmalade-tts kokoro "tell me about --completion"`). ──
+    if argv and argv[0] == "--completion":
+        shell = argv[1] if len(argv) > 1 else "bash"
+        print(zsh_completion() if shell == "zsh" else bash_completion())
+        return
+
+    if argv and argv[0] == "config":
+        cmd_config(argv[1:])
+        return
+    if argv and argv[0] == "daemon":
+        cmd_daemon(argv[1:])
+        return
+    if argv and argv[0] == "init":
+        cmd_init(argv[1:])
+        return
+    if argv and argv[0] == "install":
+        cmd_install(argv[1:])
+        return
+    if argv and argv[0] == "mcp":
+        from . import mcp_server
+        try:
+            mcp_server.run()
+        except ImportError:
+            print("MCP support not installed. Run: pip install marmalade-tts[mcp]",
+                  file=sys.stderr)
+            sys.exit(1)
+        return
+    if argv and argv[0] == "--list-effects":
+        config_tmp = cfg_mod.load()
+        user_presets = config_tmp.get("effects", {}).get("presets", {})
+        fx.list_effects(user_presets)
+        return
+
+    if argv and argv[0] == "--list-aliases":
+        config_tmp = cfg_mod.load()
+        print_aliases(config_tmp.get("aliases") or {})
+        return
+
+    # ── Alias expansion + default-engine injection ──
+    # Both need the config; load it once and share. Aliases are config-defined
+    # named bundles (engine + voice + speed + …) invoked positionally like an
+    # engine name. Engine names are reserved — an alias whose name collides
+    # with an engine name is ignored with a warning (config might be partial
+    # during edits; don't hard-fail).
+    alias_overrides = None
+    _config_tmp = None
+    if argv:
+        _config_tmp = cfg_mod.load()
+        aliases = _config_tmp.get("aliases") or {}
+        name = argv[0]
+        if name in aliases:
+            if name in ENGINE_NAMES:
+                # Reserved-name collision — engine wins, skip the alias.
+                print(
+                    f"[marmalade-tts] Warning: alias {name!r} shadows engine "
+                    f"name and is ignored.",
+                    file=sys.stderr,
+                )
+            else:
+                spec = aliases[name] or {}
+                engine = spec.get("engine")
+                if not engine:
+                    print(
+                        f"[marmalade-tts] Alias {name!r} has no 'engine' field.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                if engine not in ENGINE_NAMES:
+                    print(
+                        f"[marmalade-tts] Alias {name!r} references unknown "
+                        f"engine {engine!r}.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                # Rewrite argv so the rest of dispatch sees the engine name,
+                # and stash the rest of the alias spec for later merging.
+                argv[0] = engine
+                sys.argv = [sys.argv[0]] + argv
+                alias_overrides = {k: v for k, v in spec.items() if k != "engine"}
+
+    # ── If first token is not an engine name, inject default engine ──
+    # This enables: marmalade-tts "hello" (uses defaults.engine)
+    # and:          marmalade-tts --fast "hello"
+    first_is_engine = argv and argv[0] in ENGINE_NAMES
+    if not first_is_engine and argv:
+        if _config_tmp is None:
+            _config_tmp = cfg_mod.load()
+        default_eng = _config_tmp.get("defaults", {}).get("engine", "kitten")
+        argv.insert(0, default_eng)
+        sys.argv = [sys.argv[0]] + argv
+
+    # ── Parse ──
+    parser = _build_parser()
     args, extra = parser.parse_known_args()
     positional = extra  # text + optional voice override
 
@@ -828,7 +595,7 @@ Examples:
     # catches `marmalade-tts kokoro --list-aliases` etc.) ──
     if args.list_aliases:
         config = cfg_mod.load()
-        _print_aliases(config.get("aliases") or {})
+        print_aliases(config.get("aliases") or {})
         return
 
     # ── Load config ──
@@ -848,7 +615,7 @@ Examples:
 
     # ── Apply preset to engine config ──
     eng_cfg = cfg_mod.engine_cfg(config, engine_name)
-    _apply_preset(eng_cfg, engine_name, preset_name, config)
+    apply_preset(eng_cfg, engine_name, preset_name, config)
 
     # ── Build engine ──
     engine = ENGINE_CLASSES[engine_name](eng_cfg)
@@ -859,7 +626,7 @@ Examples:
         return
 
     # ── Resolve text and voice ──
-    text, voice_arg = _resolve_text_and_voice(args, positional, engine_name, parser)
+    text, voice_arg = resolve_text_and_voice(args, positional, engine_name, parser)
 
     if not text.strip():
         sys.exit("[marmalade-tts] No text to synthesize")
@@ -878,7 +645,7 @@ Examples:
         voice = alias_overrides["voice"]
 
     # ── Output paths ──
-    out_paths, auto_play = _resolve_out_paths(args, len(utterances), config, parser)
+    out_paths, auto_play = resolve_out_paths(args, len(utterances), config, parser)
 
     # ── Speed ──
     # Precedence: --speed > alias.speed > defaults.speed
@@ -929,117 +696,84 @@ Examples:
             config.get("effects", {}).get("defaults", {}).get(engine_name, [])
         )
 
+    # ── Preprocessing mode (encodes the --preprocessing / --no-preprocessing
+    # flags so synth.synthesize_one can honor them; None = use config). ──
+    if args.no_preprocessing:
+        preprocess_mode = False
+    elif args.preprocessing:
+        preprocess_mode = True
+    else:
+        preprocess_mode = None
+    custom_rules = eng_cfg.get("preprocessing") if isinstance(
+        eng_cfg.get("preprocessing"), list) else None
+
     # ── Synthesize + (maybe) play ──
-    # Preprocessing runs per-line so an emoji on line 3 doesn't affect line 1,
-    # and a blank line after preprocessing is silently skipped. We capture
-    # `raw_text` (the user's original line, pre-preprocessing) for subtitles
-    # so emoji/markdown the user typed show up readable in the .srt/.vtt
-    # even though those chars are stripped before synthesis.
     should_play = (auto_play or args.play) and not args.no_play
 
     # Streaming path: only when we're actually going to play AND there's more
     # than one utterance — single utterances have nothing to overlap with, and
-    # silent --out-only runs gain nothing from a background thread. A producer
-    # thread renders sequentially while the main thread plays in input order;
-    # subtitles and the --json/--print-path report still happen once all
-    # synthesis is done, so the user-visible final state is identical.
+    # silent --out-only runs gain nothing from a background thread. Streaming
+    # is handled by synth.run_batch(streaming=True, on_ready=...); on_ready
+    # plays the WAV and cleans up tmp files. Subtitles + report run after
+    # streaming finishes so the user-visible final state is identical to the
+    # sequential path.
     if should_play and is_batch:
-        import queue
-        import threading
-
-        play_q: "queue.Queue" = queue.Queue()
-        results: list = []
-        producer_error: list = []
-
-        def _produce():
-            try:
-                for utt, out_path in zip(utterances, out_paths):
-                    r = _synthesize_one(
-                        utt, out_path, engine, args, eng_cfg, config,
-                        engine_name, effect_list, synth_kwargs,
-                    )
-                    if r is None:
-                        continue
-                    results.append(r)
-                    play_q.put(r)
-            except BaseException as e:
-                producer_error.append(e)
-            finally:
-                play_q.put(None)  # sentinel: end of stream
-
-        prod = threading.Thread(
-            target=_produce, daemon=True, name="marmalade-producer")
-        prod.start()
-
-        # Consume in FIFO order — same order the producer pushed, which is the
-        # input order. Tmp WAVs (no --out / --out-dir) are cleaned up as we go,
-        # exactly like the non-streaming path does in a separate loop.
-        try:
-            while True:
-                r = play_q.get()
-                if r is None:
-                    break
-                play_wav(r["out"])
-                if not args.out and not args.out_dir and os.path.exists(r["out"]):
-                    try:
-                        os.unlink(r["out"])
-                    except OSError:
-                        pass
-        except KeyboardInterrupt:
-            # Best-effort cleanup of any tmp WAVs that were already rendered
-            # but not yet played. Producer is a daemon thread, so it dies
-            # with the process; we just don't leave files behind that we
-            # know the paths to.
-            if not args.out and not args.out_dir:
-                # Drain whatever's already in the queue without blocking.
+        def _on_ready(r):
+            play_wav(r["out"])
+            if not args.out and not args.out_dir and os.path.exists(r["out"]):
                 try:
-                    while True:
-                        r = play_q.get_nowait()
-                        if r is None:
-                            continue
-                        if os.path.exists(r["out"]):
-                            try:
-                                os.unlink(r["out"])
-                            except OSError:
-                                pass
-                except queue.Empty:
+                    os.unlink(r["out"])
+                except OSError:
                     pass
-            raise
 
-        prod.join()
+        def _on_interrupt(r):
+            # Best-effort cleanup of rendered-but-unplayed tmp WAVs.
+            if not args.out and not args.out_dir and os.path.exists(r["out"]):
+                try:
+                    os.unlink(r["out"])
+                except OSError:
+                    pass
+
+        results, producer_error = run_batch(
+            utterances, out_paths,
+            engine=engine, engine_name=engine_name,
+            eng_cfg=eng_cfg, config=config,
+            synth_kwargs=synth_kwargs, effect_list=effect_list,
+            preprocess_mode=preprocess_mode, custom_rules=custom_rules,
+            streaming=True, on_ready=_on_ready, on_interrupt=_on_interrupt,
+        )
 
         # Subtitles + report run whether or not the producer raised — they
         # describe what *did* render successfully. The exception (if any)
         # is then re-raised so the process exits non-zero with a clear cause.
-        _write_subtitles(args, results)
-        _report_outputs(args, engine_name, voice, results, effect_list,
-                        eng_cfg, is_batch)
+        write_subtitles_for_results(args, results)
+        report_outputs(args, engine_name, voice, results, effect_list,
+                       eng_cfg, is_batch)
 
-        if producer_error:
-            raise producer_error[0]
+        if producer_error is not None:
+            raise producer_error
         if not results:
             sys.exit("[marmalade-tts] No text to synthesize after preprocessing")
         return
 
     # Non-streaming path: single utterance, --no-play, or --out-only run.
-    # Same sequential loop the CLI has always used — no thread spawned.
-    results = []
-    for utt, out_path in zip(utterances, out_paths):
-        r = _synthesize_one(
-            utt, out_path, engine, args, eng_cfg, config,
-            engine_name, effect_list, synth_kwargs,
-        )
-        if r is not None:
-            results.append(r)
+    results, _ = run_batch(
+        utterances, out_paths,
+        engine=engine, engine_name=engine_name,
+        eng_cfg=eng_cfg, config=config,
+        synth_kwargs=synth_kwargs, effect_list=effect_list,
+        preprocess_mode=preprocess_mode, custom_rules=custom_rules,
+        streaming=False,
+    )
 
     if not results:
         sys.exit("[marmalade-tts] No text to synthesize after preprocessing")
 
     # ── Subtitle output ──
-    _write_subtitles(args, results)
+    write_subtitles_for_results(args, results)
 
     # ── Output reporting ──
-    _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch)
+    report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch)
 
     # ── Playback ──
     if should_play:
