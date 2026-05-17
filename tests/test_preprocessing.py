@@ -362,6 +362,55 @@ class TestMarkdown:
         assert "the post" in result
         assert "example dot com" not in result
 
+    # ── Python dunders must survive the bold-underscore rule ────────────
+    # Regression: `(?<!\w)__(...)__(?!\w)` alone happily matches `__init__`
+    # and friends (boundaries are satisfied at string/whitespace edges),
+    # rewriting them to `init`, `name`, `main`, `repr` in any prose that
+    # discusses Python internals. The rule keeps a denylist of well-known
+    # dunder identifiers so the whole `__name__` token is left intact.
+
+    def test_dunder_init_not_bolded(self):
+        assert preprocess("__init__", rules=["markdown"]) == "__init__"
+
+    def test_dunder_name_not_bolded(self):
+        assert preprocess("__name__", rules=["markdown"]) == "__name__"
+
+    def test_dunder_main_not_bolded(self):
+        assert preprocess("__main__", rules=["markdown"]) == "__main__"
+
+    def test_dunder_repr_not_bolded(self):
+        assert preprocess("__repr__", rules=["markdown"]) == "__repr__"
+
+    def test_dunder_in_sentence_survives(self):
+        result = preprocess("Use the __init__ method to construct.",
+                            rules=["markdown"])
+        assert "__init__" in result
+        assert "init method" not in result
+
+    def test_multiple_dunders_in_one_line(self):
+        result = preprocess("Override __eq__ and __hash__ together.",
+                            rules=["markdown"])
+        assert "__eq__" in result
+        assert "__hash__" in result
+
+    def test_bold_hello_still_works(self):
+        # Baseline: non-dunder bold-underscore still strips to inner text.
+        assert preprocess("__hello__", rules=["markdown"]) == "hello"
+
+    def test_bold_important_still_works(self):
+        # Common markdown emphasis word — not a dunder, must strip.
+        assert preprocess("__important__", rules=["markdown"]) == "important"
+
+    def test_single_underscore_italic_still_works(self):
+        # The italic rule is unrelated to the dunder fix; confirm it
+        # didn't get caught in the crossfire.
+        assert preprocess("_single_", rules=["markdown"]) == "single"
+
+    def test_triple_underscore_left_alone(self):
+        # `___three___` is malformed for both bold and italic — neither
+        # rule should fire. The behavior we document: no change.
+        assert preprocess("___three___", rules=["markdown"]) == "___three___"
+
 
 # ── HTML ─────────────────────────────────────────────────────────────────────
 
@@ -468,6 +517,92 @@ class TestPronounce:
         # Every engine profile lists `pronounce`.
         for engine, rules in ENGINE_PROFILES.items():
             assert "pronounce" in rules, f"{engine} missing pronounce rule"
+
+    # ── Bug 2: hyphenated keys must not bleed into longer compounds ─────
+    # `\b` treats `-` as a non-word char, so a key like "marmalade-tts"
+    # would also match inside "marmalade-tts-cli" — turning the compound
+    # into "marmalade T T S-cli". The boundary is now widened to
+    # `(?<![\w-])...(?![\w-])`, so a hyphenated key matches only when it
+    # stands alone as a whole token.
+
+    def test_hyphenated_key_alone_still_matches(self):
+        self._write("marmalade-tts: marmalade T T S\n")
+        result = preprocess("marmalade-tts is great", rules=["pronounce"])
+        assert "marmalade T T S" in result
+        assert "marmalade-tts" not in result
+
+    def test_hyphenated_key_inside_compound_not_matched(self):
+        # `marmalade-tts-cli` is a different token; the shorter key must
+        # NOT eat the prefix and leave a dangling "-cli".
+        self._write("marmalade-tts: marmalade T T S\n")
+        result = preprocess("the marmalade-tts-cli tool", rules=["pronounce"])
+        assert result == "the marmalade-tts-cli tool"
+        assert "marmalade T T S" not in result
+
+    def test_unhyphenated_key_inside_hyphen_compound_not_matched(self):
+        # Same principle, key with no hyphen: `kubectl` should not match
+        # inside `kubectl-prod`. Users wanting that substitution must add
+        # the compound as its own key.
+        self._write("kubectl: kube-cuttle\n")
+        result = preprocess("run kubectl-prod now", rules=["pronounce"])
+        assert result == "run kubectl-prod now"
+        assert "kube-cuttle" not in result
+
+    def test_unhyphenated_key_alone_still_matches(self):
+        self._write("kubectl: kube-cuttle\n")
+        result = preprocess("run kubectl now", rules=["pronounce"])
+        assert "kube-cuttle" in result
+
+    def test_unhyphenated_key_followed_by_punctuation_matches(self):
+        # Punctuation other than `-` or word chars is a clean boundary.
+        self._write("kubectl: kube-cuttle\n")
+        result = preprocess("use kubectl, please.", rules=["pronounce"])
+        assert "kube-cuttle" in result
+
+    # ── Bug 3: empty / non-string YAML keys must not garble output ──────
+    # An empty-string key produces an alternation branch matching every
+    # zero-width position in the input, replacing it with the value and
+    # silently scrambling every utterance until the user notices. PyYAML
+    # can also emit non-string keys (ints, bools); those would get
+    # coerced to literal strings like "42" or "True" and substitute on
+    # any digit/word match — also unintended. Both are now filtered out.
+
+    def test_empty_string_key_ignored(self):
+        # The empty-string key must be dropped; the real key still works.
+        self._write('"": bogus\nkubectl: kube-cuttle\n')
+        result = preprocess("run kubectl now", rules=["pronounce"])
+        assert result == "run kube-cuttle now"
+        # And on input with no real-key match, the empty key must not
+        # have garbled anything.
+        plain = preprocess("plain text here", rules=["pronounce"])
+        assert plain == "plain text here"
+        assert "bogus" not in plain
+
+    def test_empty_string_key_alone_is_noop(self):
+        # If the empty-string key is the ONLY entry, the loader must end
+        # up with no compiled regex at all — text passes through verbatim.
+        self._write('"": bogus\n')
+        text = "anything could be here"
+        assert preprocess(text, rules=["pronounce"]) == text
+
+    def test_non_string_key_ignored(self):
+        # PyYAML happily parses `42: number` as `{42: "number"}`. The
+        # integer key must be dropped (str(42) would otherwise turn every
+        # "42" in the input into "number"). Real string keys still work.
+        self._write("42: number\nkubectl: kube-cuttle\n")
+        result_nums = preprocess("we have 42 things", rules=["pronounce"])
+        assert "42" in result_nums
+        assert "number" not in result_nums
+        result_kube = preprocess("run kubectl now", rules=["pronounce"])
+        assert "kube-cuttle" in result_kube
+
+    def test_null_key_ignored(self):
+        # `~: foo` in YAML parses to `{None: "foo"}`. Defensive filter
+        # drops it — without crashing the loader.
+        self._write("~: foo\nkubectl: kube-cuttle\n")
+        result = preprocess("run kubectl now", rules=["pronounce"])
+        assert "kube-cuttle" in result
+        assert "foo" not in result
 
 
 # ── Engine profiles ──────────────────────────────────────────────────────────

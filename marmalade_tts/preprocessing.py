@@ -249,6 +249,55 @@ _MD_BOLD_UNDER = re.compile(r"(?<!\w)__([^_\n]+?)__(?!\w)")
 _MD_STRIKE     = re.compile(r"~~([^~\n]+?)~~")
 _MD_ITAL_STAR  = re.compile(r"(?<!\*)\*([^*\n]+?)\*(?!\*)")
 _MD_ITAL_UNDER = re.compile(r"(?<!\w)_([^_\n]+?)_(?!\w)")
+
+# Python dunder names — substituting them inside the bold-underscore rule
+# would rewrite "__init__" to "init" in any README discussing dunders. The
+# regex alone cannot distinguish "__init__" from "__hello__" markdown bold
+# (same shape), so we keep a denylist of the well-known dunder identifiers.
+# When the captured inner name is in this set, leave the whole "__name__"
+# token alone.
+_PYTHON_DUNDERS = frozenset({
+    # Object protocol
+    "init", "new", "del", "init_subclass", "subclasshook",
+    "repr", "str", "bytes", "format", "hash", "bool", "dir", "sizeof",
+    # Attribute access
+    "getattr", "getattribute", "setattr", "delattr",
+    # Class / module identity
+    "class", "bases", "mro", "subclasses", "name", "qualname",
+    "module", "doc", "dict", "slots", "weakref", "annotations",
+    "package", "path", "file", "spec", "loader", "version", "author",
+    "all", "main",
+    # Comparison
+    "eq", "ne", "lt", "le", "gt", "ge",
+    # Numeric
+    "add", "radd", "iadd", "sub", "rsub", "isub", "mul", "rmul", "imul",
+    "truediv", "rtruediv", "itruediv", "floordiv", "rfloordiv", "ifloordiv",
+    "mod", "rmod", "imod", "divmod", "rdivmod", "pow", "rpow", "ipow",
+    "lshift", "rlshift", "ilshift", "rshift", "rrshift", "irshift",
+    "and", "rand", "iand", "or", "ror", "ior", "xor", "rxor", "ixor",
+    "neg", "pos", "abs", "invert", "round", "trunc", "floor", "ceil",
+    "int", "float", "complex", "index",
+    # Container / iterator
+    "len", "length_hint", "getitem", "setitem", "delitem", "missing",
+    "iter", "next", "reversed", "contains",
+    # Callable / context / copy / pickle
+    "call", "enter", "exit", "copy", "deepcopy",
+    "reduce", "reduce_ex", "getstate", "setstate", "getnewargs",
+    # Async
+    "aiter", "anext", "aenter", "aexit", "await",
+    # Descriptor
+    "get", "set", "delete", "set_name",
+})
+
+
+def _bold_under_sub(m: "re.Match[str]") -> str:
+    """Replacement for the bold-underscore rule. Leaves Python dunders
+    (`__init__`, `__name__`, etc.) untouched; otherwise drops the wrapping
+    `__` and returns the inner text."""
+    inner = m.group(1)
+    if inner in _PYTHON_DUNDERS:
+        return m.group(0)
+    return inner
 # Triple-backtick fences (with or without language tag) — drop the fences,
 # keep the content. Greedy across newlines.
 _MD_FENCE      = re.compile(r"```[^\n`]*\n?(.*?)```", re.DOTALL)
@@ -273,7 +322,7 @@ def _markdown(text: str) -> str:
     text = _MD_FENCE.sub(r"\1", text)
     text = _MD_CODE.sub(r"\1", text)
     text = _MD_BOLD_STAR.sub(r"\1", text)
-    text = _MD_BOLD_UNDER.sub(r"\1", text)
+    text = _MD_BOLD_UNDER.sub(_bold_under_sub, text)
     text = _MD_STRIKE.sub(r"\1", text)
     text = _MD_ITAL_STAR.sub(r"\1", text)
     text = _MD_ITAL_UNDER.sub(r"\1", text)
@@ -319,7 +368,18 @@ def _load_pronunciations() -> tuple[dict, re.Pattern | None]:
             with open(PRONUNCIATIONS_PATH) as f:
                 loaded = yaml.safe_load(f) or {}
             if isinstance(loaded, dict):
-                data = {str(k): str(v) for k, v in loaded.items()}
+                # Filter empty and non-string keys defensively. An empty
+                # string key would compile to an alternation branch that
+                # matches every zero-width position in the input, silently
+                # garbling every utterance. PyYAML can also emit non-string
+                # keys (ints, bools, None); coercing those with str() would
+                # turn `None: foo` into a literal "None" substitution, which
+                # the user almost certainly didn't intend.
+                data = {
+                    str(k): str(v)
+                    for k, v in loaded.items()
+                    if k and isinstance(k, str)
+                }
         except Exception:
             data = {}
 
@@ -331,11 +391,16 @@ def _load_pronunciations() -> tuple[dict, re.Pattern | None]:
     # Sort longest-first so "marmalade-tts" wins over "marmalade".
     keys = sorted(data.keys(), key=len, reverse=True)
     alternation = "|".join(re.escape(k) for k in keys)
-    # \b handles word boundaries on both sides; keys may contain "-" but that
-    # is treated as a word boundary too in Python regex, which is what we want
-    # ("marmalade-tts" still bounds cleanly because there's a non-word char
-    # before "m" and after "s" in any normal sentence).
-    _PRONOUNCE_RE = re.compile(rf"\b(?:{alternation})\b", re.IGNORECASE)
+    # Boundaries widened from `\b` to `(?<![\w-])...(?![\w-])` so a key like
+    # "marmalade-tts" doesn't match inside the compound "marmalade-tts-cli"
+    # (Python's `\b` treats `-` as a non-word char and would otherwise
+    # accept the boundary on both sides of the hyphen). Net effect: a
+    # hyphenated key only substitutes when it stands alone as a whole
+    # token. Users who want "kubectl-prod" or similar must add the longer
+    # compound as its own key.
+    _PRONOUNCE_RE = re.compile(
+        rf"(?<![\w-])(?:{alternation})(?![\w-])", re.IGNORECASE
+    )
     return _PRONUNCIATIONS, _PRONOUNCE_RE
 
 
