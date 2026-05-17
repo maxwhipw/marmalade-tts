@@ -18,6 +18,61 @@ This project follows [Semantic Versioning](https://semver.org/).
   stable than the CLI's.
 
 ### Added
+- **MCP server.** New `marmalade-tts mcp` subcommand runs a stdio Model
+  Context Protocol server with three tools: `synthesize`, `list_voices`,
+  and `find_voice`. `find_voice` takes a free-text description ("warm
+  British male", "energetic young female") and returns the top three
+  shipped voices with a `why` field naming the matched terms — pure
+  keyword-overlap scoring against a curated description table, no LLM
+  call, inspectable. The MCP SDK is an optional dep
+  (`pip install marmalade-tts[mcp]`); without it, `marmalade-tts mcp`
+  prints an install hint and exits 1. Add to Claude Code with
+  `claude mcp add marmalade-tts -- marmalade-tts mcp`. Full setup in
+  `docs/mcp.md`. piper/coqui are deliberately omitted from the voice
+  catalog — their voices are user-installed model paths, not bare names.
+- **Voice aliases / personas.** Config-defined named bundles
+  (`aliases.narrator = {engine: kokoro, voice: george, speed: 0.95,
+  effects: ["reverb=15"]}`) invoke positionally like an engine name:
+  `marmalade-tts narrator "Once upon a time"`. Precedence: explicit CLI
+  flags > alias defaults > engine config defaults. Engine names are
+  reserved — an alias that collides is ignored with a warning. Alias
+  names complete in bash/zsh alongside engine names; `--list-aliases`
+  enumerates what's configured.
+- **Streaming batch playback.** Multi-line batch playback no longer
+  waits for the whole script to render before playing the first line. A
+  producer thread renders utterances sequentially while the main thread
+  plays each WAV as soon as it lands in the queue. Lines play in input
+  order; the first line plays almost immediately and the rest stream
+  behind it. Single-utterance, `--no-play`, and pure `--out`/`--out-dir`
+  paths are unchanged. Subtitles and `--json`/`--print-path` reporting
+  still happen once all synthesis is done — same final-state output,
+  faster perceived start. Intra-utterance (engine-native chunked)
+  streaming is a separate future feature.
+- **SRT and WebVTT subtitle output.** New `--srt PATH` and `--vtt PATH`
+  flags emit a synchronized subtitle file alongside the generated WAVs.
+  Cue text is the user's raw input (so emoji and markdown they typed
+  appear readable in the subtitle file even though they were stripped
+  before synthesis); cue timing is measured from each WAV's duration
+  after effects are applied, with a 50 ms gap between consecutive cues.
+  Works for both single and batch input; pass both flags to write both
+  files. `--json` output also gains a `duration` field per utterance.
+- **`markdown` and `html` preprocessing rules.** A piped README no
+  longer reads `**hello**` as "asterisk asterisk hello asterisk
+  asterisk" or `<p>hi</p>` as "less than p greater than hi …". The
+  `markdown` rule drops bold/italic/code/heading/blockquote/list/link/
+  image syntax — link targets are dropped, only the visible text reads
+  aloud. The `html` rule strips tags and decodes entities via
+  `html.unescape`. Both are added to every engine profile (universally
+  safe) and ordered before `url`/`email` so `[text](https://example.com)`
+  comes out as just "text".
+- **Pronunciation dictionary.** New `pronounce` preprocessing rule
+  reads `~/.config/marmalade-tts/pronunciations.yaml` on first use and
+  substitutes whole-word, case-insensitive matches with their spoken
+  form. Missing or empty file → no-op. Hyphenated keys are allowed
+  (`marmalade-tts: marmalade T T S`); keys sorted longest-first so
+  multi-word entries beat their prefixes. Placed late in the rule
+  order, after numbers/abbreviations, so substitutions operate on
+  already-normalized text.
 - **Quality knobs for matcha + emojivoice.** Both engines now read
   `engines.matcha.steps` / `engines.matcha.temperature` (and the
   emojivoice equivalents) from config. `steps` is matcha-tts's
