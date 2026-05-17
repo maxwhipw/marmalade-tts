@@ -1067,3 +1067,220 @@ class TestBatchMode:
                            stdin_text="line one\nline two") as h:
             main()
         assert h.synth.call_count == 2
+
+
+# ── Subtitle output ──────────────────────────────────────────────────────────
+
+def _write_silence_wav(path: str, duration_s: float = 0.5, rate: int = 22050) -> None:
+    """Write a tiny PCM silence WAV at `path`. Used by the subtitle tests to
+    simulate engine output we can read back with wave.open()."""
+    import wave
+    frames = int(round(duration_s * rate))
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)  # 16-bit
+        w.setframerate(rate)
+        w.writeframes(b"\x00\x00" * frames)
+
+
+class TestSubtitleOutput:
+    """End-to-end --srt / --vtt flags with a mocked engine that writes
+    real (silent) WAVs so wave.open() can read their duration back."""
+
+    def _run_with_srt(self, argv, tmp_path, stdin_text=None, wav_duration_s=0.5):
+        """Patch the kokoro engine to write a tiny silent WAV at the path
+        the CLI passes in, so wav_duration() reads a real duration."""
+        cfg = _fake_synth_config({"play": False})
+        synth = MagicMock(
+            side_effect=lambda text, out_path, **kw:
+                _write_silence_wav(out_path, duration_s=wav_duration_s)
+        )
+        import io
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+
+        # Real tmp WAVs so wave.open() works.
+        tmp_counter = [0]
+
+        def real_tmp_wav():
+            tmp_counter[0] += 1
+            p = str(tmp_path / f"tmp-{tmp_counter[0]}.wav")
+            # The engine mock writes the WAV; pre-create to satisfy any check.
+            return p
+
+        with patch("sys.argv", argv), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             patch("marmalade_tts.cli.make_tmp_wav", side_effect=real_tmp_wav), \
+             patch("marmalade_tts.cli.play_wav"), \
+             patch("marmalade_tts.cli.KokoroEngine") as MockKokoro, \
+             patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {"kokoro": MockKokoro}), \
+             patch("sys.stdout", stdout_buf), \
+             patch("sys.stderr", stderr_buf):
+            MockKokoro.return_value.synthesize = synth
+            if stdin_text is not None:
+                with patch("sys.stdin", io.StringIO(stdin_text)):
+                    main()
+            else:
+                main()
+        return stdout_buf.getvalue(), stderr_buf.getvalue()
+
+    def test_srt_single_utterance(self, tmp_path):
+        srt = tmp_path / "out.srt"
+        _, err = self._run_with_srt(
+            ["marmalade-tts", "kokoro", "Hello world",
+             "--no-play", "--out", str(tmp_path / "out.wav"),
+             "--srt", str(srt)],
+            tmp_path,
+            wav_duration_s=1.0,
+        )
+        assert srt.exists()
+        body = srt.read_text(encoding="utf-8")
+        # One cue starting at 0
+        assert "1\n00:00:00,000 --> " in body
+        assert "Hello world" in body
+        # Stderr note
+        assert "Wrote subtitles" in err
+        assert str(srt) in err
+
+    def test_srt_batch_three_lines(self, tmp_path):
+        srt = tmp_path / "chapters.srt"
+        out_dir = tmp_path / "out"
+        _, err = self._run_with_srt(
+            ["marmalade-tts", "kokoro", "--no-play",
+             "--out-dir", str(out_dir),
+             "--text", "alpha\nbeta\ngamma",
+             "--srt", str(srt)],
+            tmp_path,
+            wav_duration_s=1.0,
+        )
+        assert srt.exists()
+        body = srt.read_text(encoding="utf-8")
+        # Three cues
+        assert body.count("-->") == 3
+        # Texts present
+        assert "alpha" in body
+        assert "beta" in body
+        assert "gamma" in body
+        # Cue 1 starts at 0, cue 2 starts at 1.0 + 0.050 = 01,050
+        assert "00:00:00,000 --> 00:00:01,000\nalpha" in body
+        assert "00:00:01,050 --> 00:00:02,050\nbeta" in body
+        assert "00:00:02,100 --> 00:00:03,100\ngamma" in body
+
+    def test_srt_uses_raw_text_not_preprocessed(self, tmp_path):
+        """Subtitle text should be the user's original input — emoji and
+        markdown that get stripped during preprocessing must still show
+        up in the .srt because that's what the user typed."""
+        srt = tmp_path / "out.srt"
+        cfg = _fake_synth_config({"play": False})
+        # Turn preprocessing ON so emojis would actually be stripped.
+        cfg["defaults"]["preprocessing"] = True
+
+        synth = MagicMock(
+            side_effect=lambda text, out_path, **kw:
+                _write_silence_wav(out_path, duration_s=0.5)
+        )
+        import io
+        stderr_buf = io.StringIO()
+        tmp_counter = [0]
+
+        def real_tmp_wav():
+            tmp_counter[0] += 1
+            return str(tmp_path / f"tmp-{tmp_counter[0]}.wav")
+
+        with patch("sys.argv",
+                   ["marmalade-tts", "kokoro", "--no-play",
+                    "--text", "I love it 🤣",
+                    "--srt", str(srt)]), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             patch("marmalade_tts.cli.make_tmp_wav", side_effect=real_tmp_wav), \
+             patch("marmalade_tts.cli.play_wav"), \
+             patch("marmalade_tts.cli.KokoroEngine") as MockKokoro, \
+             patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {"kokoro": MockKokoro}), \
+             patch("sys.stderr", stderr_buf):
+            MockKokoro.return_value.synthesize = synth
+            main()
+
+        body = srt.read_text(encoding="utf-8")
+        # Raw text (with emoji) appears in the subtitle file
+        assert "🤣" in body
+        # Sanity: the engine was called with the preprocessed (stripped) form
+        synth_text = synth.call_args[0][0]
+        assert "🤣" not in synth_text
+
+    def test_vtt_basic_header(self, tmp_path):
+        vtt = tmp_path / "out.vtt"
+        _, _ = self._run_with_srt(
+            ["marmalade-tts", "kokoro", "Hello world",
+             "--no-play", "--out", str(tmp_path / "out.wav"),
+             "--vtt", str(vtt)],
+            tmp_path,
+        )
+        body = vtt.read_text(encoding="utf-8")
+        assert body.startswith("WEBVTT\n\n")
+        assert "Hello world" in body
+        # Period decimal separator
+        assert "00:00:00.000" in body
+
+    def test_srt_and_vtt_both(self, tmp_path):
+        srt = tmp_path / "out.srt"
+        vtt = tmp_path / "out.vtt"
+        _, _ = self._run_with_srt(
+            ["marmalade-tts", "kokoro", "Hello",
+             "--no-play", "--out", str(tmp_path / "out.wav"),
+             "--srt", str(srt), "--vtt", str(vtt)],
+            tmp_path,
+        )
+        assert srt.exists()
+        assert vtt.exists()
+
+    def test_srt_creates_parent_dir(self, tmp_path):
+        srt = tmp_path / "subs" / "deep" / "out.srt"
+        _, _ = self._run_with_srt(
+            ["marmalade-tts", "kokoro", "Hello",
+             "--no-play", "--out", str(tmp_path / "out.wav"),
+             "--srt", str(srt)],
+            tmp_path,
+        )
+        assert srt.exists()
+
+    def test_no_srt_flag_writes_nothing(self, tmp_path):
+        """Without --srt or --vtt, no subtitle file is created."""
+        _, _ = self._run_with_srt(
+            ["marmalade-tts", "kokoro", "Hello",
+             "--no-play", "--out", str(tmp_path / "out.wav")],
+            tmp_path,
+        )
+        # No .srt or .vtt anywhere in tmp_path
+        assert not any(p.suffix in (".srt", ".vtt") for p in tmp_path.iterdir())
+
+    def test_json_includes_duration(self, tmp_path):
+        """The --json payload should gain a `duration` field per utterance."""
+        import json
+        cfg = _fake_synth_config({"play": False})
+        synth = MagicMock(
+            side_effect=lambda text, out_path, **kw:
+                _write_silence_wav(out_path, duration_s=0.5)
+        )
+        import io
+        stdout_buf = io.StringIO()
+        tmp_counter = [0]
+
+        def real_tmp_wav():
+            tmp_counter[0] += 1
+            return str(tmp_path / f"tmp-{tmp_counter[0]}.wav")
+
+        with patch("sys.argv",
+                   ["marmalade-tts", "kokoro", "Hello",
+                    "--no-play", "--json"]), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value=cfg), \
+             patch("marmalade_tts.cli.make_tmp_wav", side_effect=real_tmp_wav), \
+             patch("marmalade_tts.cli.play_wav"), \
+             patch("marmalade_tts.cli.KokoroEngine") as MockKokoro, \
+             patch.dict("marmalade_tts.cli.ENGINE_CLASSES", {"kokoro": MockKokoro}), \
+             patch("sys.stdout", stdout_buf):
+            MockKokoro.return_value.synthesize = synth
+            main()
+        payload = json.loads(stdout_buf.getvalue())
+        assert "duration" in payload
+        # 0.5 s silence WAV → duration should be close to 0.5
+        assert 0.45 <= payload["duration"] <= 0.55

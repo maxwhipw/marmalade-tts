@@ -9,7 +9,8 @@ from . import __version__
 from . import config as cfg_mod
 from . import daemon
 from . import preprocessing as pp
-from .playback import play_wav, make_tmp_wav
+from .playback import play_wav, make_tmp_wav, wav_duration
+from . import subtitles as subs
 from .completion import bash_completion, zsh_completion
 from .engines.kitten import KittenEngine, VOICES as KITTEN_VOICES
 from .engines.kokoro import KokoroEngine, is_voice_token as kokoro_is_voice_token
@@ -541,6 +542,7 @@ def _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_
             "out": r["out"],
             "effects": effect_list,
             "text": r["text"],
+            "duration": r.get("duration", 0.0),
         } for r in results]
         print(json.dumps(payload if is_batch else payload[0]))
     elif args.print_path:
@@ -549,6 +551,26 @@ def _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_
     elif not args.quiet:
         for r in results:
             print(f"[marmalade-tts] Generated: {r['out']}", file=sys.stderr)
+
+
+def _write_subtitles(args, results):
+    """Emit --srt / --vtt files if requested. Both flags are independent —
+    passing both writes both. Cue text comes from `raw_text` (original
+    user input), so emoji/markdown that were stripped during preprocessing
+    still appear in the subtitle file the user sees."""
+    if not (args.srt or args.vtt):
+        return
+    texts = [r["raw_text"] for r in results]
+    durations = [r.get("duration", 0.0) for r in results]
+    cues = subs.build_cues(texts, durations)
+    if args.srt:
+        subs.write_srt(args.srt, cues)
+        if not args.quiet:
+            print(f"[marmalade-tts] Wrote subtitles: {args.srt}", file=sys.stderr)
+    if args.vtt:
+        subs.write_vtt(args.vtt, cues)
+        if not args.quiet:
+            print(f"[marmalade-tts] Wrote subtitles: {args.vtt}", file=sys.stderr)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -688,6 +710,14 @@ Examples:
                         help="Write output WAVs into DIR. Files are auto-named "
                              "(001.wav, 002.wav, …). Useful for batch mode "
                              "(multi-line input).")
+    parser.add_argument("--srt", metavar="FILE", default=None,
+                        help="Write a SubRip (.srt) subtitle file synchronized "
+                             "to the generated audio. One cue per utterance; "
+                             "works for both single and batch (multi-line) input.")
+    parser.add_argument("--vtt", metavar="FILE", default=None,
+                        help="Write a WebVTT (.vtt) subtitle file synchronized "
+                             "to the generated audio. Same shape as --srt; pass "
+                             "both flags to write both files.")
     parser.add_argument("--play", action="store_true",
                         help="Play audio even when --out is set")
     parser.add_argument("--speed", type=float, default=None,
@@ -874,7 +904,10 @@ Examples:
 
     # ── Synthesize each utterance ──
     # Preprocessing runs per-line so an emoji on line 3 doesn't affect line 1,
-    # and a blank line after preprocessing is silently skipped.
+    # and a blank line after preprocessing is silently skipped. We capture
+    # `raw_text` (the user's original line, pre-preprocessing) for subtitles
+    # so emoji/markdown the user typed show up readable in the .srt/.vtt
+    # even though those chars are stripped before synthesis.
     results = []
     for utt, out_path in zip(utterances, out_paths):
         processed = _resolve_preprocessing(utt, args, eng_cfg, config, engine_name)
@@ -882,10 +915,23 @@ Examples:
             continue
         engine.synthesize(processed, out_path, **synth_kwargs)
         _apply_effects_if_any(out_path, effect_list, config)
-        results.append({"out": out_path, "text": processed})
+        # Measure duration AFTER effects — sox tempo/speed/fade change length.
+        try:
+            duration = wav_duration(out_path)
+        except Exception:
+            duration = 0.0
+        results.append({
+            "out": out_path,
+            "text": processed,
+            "raw_text": utt,
+            "duration": duration,
+        })
 
     if not results:
         sys.exit("[marmalade-tts] No text to synthesize after preprocessing")
+
+    # ── Subtitle output ──
+    _write_subtitles(args, results)
 
     # ── Output reporting ──
     _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch)

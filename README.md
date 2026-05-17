@@ -795,6 +795,28 @@ Blank lines are skipped. The trigger is **implicit** (any multi-line input
 batches) — if you want a multi-line passage read as a single utterance,
 pre-join the lines on your end or pass it as a single argument.
 
+### Subtitles (SRT / WebVTT)
+
+Get a synchronized subtitle file alongside the generated WAV(s) with
+`--srt PATH` or `--vtt PATH` (or both). One cue per utterance; cue text
+is the **original input** (emoji and markdown the user typed appear
+readable in the subtitle, even though they're stripped before synthesis).
+
+```sh
+# One WAV per chapter + a single .srt that maps onto them in order
+marmalade-tts kokoro @chapters.txt --out-dir ./out/ --srt out/chapters.srt
+
+# WebVTT for the web
+marmalade-tts kokoro @chapters.txt --out-dir ./out/ --vtt out/chapters.vtt
+
+# Single utterance also works — one-cue file
+marmalade-tts kokoro "Hello world" --no-play --out hello.wav --srt hello.srt
+```
+
+Cue timing is measured from each WAV's actual duration (after any sox
+effects are applied) with a 50 ms gap between consecutive cues. `--json`
+output also gains a `"duration"` field per utterance.
+
 ---
 
 ## Requirements
