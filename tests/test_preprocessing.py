@@ -272,6 +272,132 @@ class TestEmoji:
         assert preprocess("🤣😭", rules=["emoji"]) == ""
 
 
+# ── Markdown ─────────────────────────────────────────────────────────────────
+
+class TestMarkdown:
+    def test_bold_stars_stripped(self):
+        assert preprocess("**hello**", rules=["markdown"]) == "hello"
+
+    def test_bold_underscores_stripped(self):
+        assert preprocess("__hello__", rules=["markdown"]) == "hello"
+
+    def test_italic_stars_stripped(self):
+        assert preprocess("*italic*", rules=["markdown"]) == "italic"
+
+    def test_italic_underscores_stripped(self):
+        assert preprocess("_italic_", rules=["markdown"]) == "italic"
+
+    def test_snake_case_identifier_not_italicised(self):
+        # snake_case_var must not be eaten by the italic-underscore rule.
+        result = preprocess("call snake_case_var here", rules=["markdown"])
+        assert "snake_case_var" in result
+
+    def test_inline_code_stripped(self):
+        assert preprocess("run `npm install`", rules=["markdown"]) == "run npm install"
+
+    def test_strikethrough_stripped(self):
+        assert preprocess("~~gone~~", rules=["markdown"]) == "gone"
+
+    def test_link_text_kept_target_dropped(self):
+        # [text](url) → text — link target must NOT appear in output.
+        result = preprocess("see [the docs](https://example.com/docs)",
+                            rules=["markdown"])
+        assert "the docs" in result
+        assert "example.com" not in result
+        assert "https" not in result
+
+    def test_image_alt_kept_target_dropped(self):
+        result = preprocess("![a cat](https://example.com/cat.png)",
+                            rules=["markdown"])
+        assert "a cat" in result
+        assert "example.com" not in result
+
+    def test_heading_hashes_stripped(self):
+        result = preprocess("# Title\n## Subtitle\n### Sub-sub",
+                            rules=["markdown"])
+        assert "#" not in result
+        assert "Title" in result
+        assert "Subtitle" in result
+        assert "Sub-sub" in result
+
+    def test_blockquote_marker_stripped(self):
+        result = preprocess("> quoted line", rules=["markdown"])
+        assert ">" not in result
+        assert "quoted line" in result
+
+    def test_bullet_dash_stripped(self):
+        result = preprocess("- first\n- second", rules=["markdown"])
+        assert "first" in result
+        assert "second" in result
+        # Leading bullet markers gone (an interior "-" in a word is fine).
+        assert "- first" not in result
+
+    def test_bullet_asterisk_stripped(self):
+        result = preprocess("* item one\n* item two", rules=["markdown"])
+        assert "item one" in result
+        assert "item two" in result
+
+    def test_bullet_plus_stripped(self):
+        result = preprocess("+ a\n+ b", rules=["markdown"])
+        assert "a" in result and "b" in result
+
+    def test_fenced_code_block_content_kept(self):
+        text = "```python\nprint('hi')\n```"
+        result = preprocess(text, rules=["markdown"])
+        assert "```" not in result
+        assert "print" in result
+
+    def test_unbalanced_tokens_do_not_crash(self):
+        # A stray "*" or "**" should not blow up; we just leave it alone.
+        for sample in ("**unbalanced", "lone * star", "left __ right",
+                       "trailing `", "[broken](", "![no close"):
+            result = preprocess(sample, rules=["markdown"])
+            assert isinstance(result, str)
+
+    def test_link_target_not_verbalized_full_pipeline(self):
+        # Through the full engine pipeline, markdown must beat url — the
+        # link target should never reach the url rule.
+        result = preprocess("read [the post](https://example.com/x)",
+                            engine="kitten")
+        assert "the post" in result
+        assert "example dot com" not in result
+
+
+# ── HTML ─────────────────────────────────────────────────────────────────────
+
+class TestHTML:
+    def test_simple_tags_stripped(self):
+        assert preprocess("<p>hi</p>", rules=["html"]) == "hi"
+
+    def test_adjacent_tags_get_a_space(self):
+        # <p>a</p><p>b</p> → "a b", not "ab".
+        result = preprocess("<p>a</p><p>b</p>", rules=["html"])
+        assert result == "a b"
+
+    def test_attributes_dropped(self):
+        result = preprocess('<a href="x">link</a>', rules=["html"])
+        assert result == "link"
+
+    def test_entity_amp(self):
+        assert preprocess("Tom &amp; Jerry", rules=["html"]) == "Tom & Jerry"
+
+    def test_entity_nbsp(self):
+        result = preprocess("a&nbsp;b", rules=["html"])
+        # &nbsp; decodes to U+00A0; that's still a space character — the
+        # final whitespace-collapse turns it into a regular space.
+        assert "a" in result and "b" in result
+
+    def test_entity_numeric(self):
+        # &#39; → '
+        assert preprocess("it&#39;s", rules=["html"]) == "it's"
+
+    def test_entity_lt_gt_not_re_stripped(self):
+        # Tag-strip first, THEN unescape, so &lt;script&gt; survives as <script>
+        # in output (the entity-form was the author's intent, not a real tag).
+        result = preprocess("write &lt;script&gt; tags", rules=["html"])
+        assert "<script>" in result
+
+
 # ── Engine profiles ──────────────────────────────────────────────────────────
 
 class TestEngineProfiles:

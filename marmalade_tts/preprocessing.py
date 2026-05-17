@@ -14,6 +14,7 @@ Architecture:
 Uses num2words (already installed as a dep of kittentts) for number verbalization.
 """
 
+import html as _html
 import re
 
 try:
@@ -224,6 +225,67 @@ def _emoji(_m: re.Match) -> str:
     return " "
 
 
+# ── Markdown / HTML strippers ────────────────────────────────────────────────
+# These are applied very early so downstream rules (url, email, number, …) see
+# clean prose rather than syntax noise like "**" or "<p>". We do not attempt to
+# be a full markdown parser — only the high-value cases that show up when a
+# README or HTML snippet is piped into the engine.
+
+
+# Image must come before link so ![alt](url) → alt (and not "!alt").
+_MD_IMAGE      = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_MD_LINK       = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+# Bold/strike use **/__/~~ pairs. Italic with * or _ must avoid eating
+# snake_case identifiers: require the underscore form to be at word
+# boundaries and to wrap non-underscore content.
+_MD_BOLD_STAR  = re.compile(r"\*\*([^*\n]+?)\*\*")
+_MD_BOLD_UNDER = re.compile(r"(?<!\w)__([^_\n]+?)__(?!\w)")
+_MD_STRIKE     = re.compile(r"~~([^~\n]+?)~~")
+_MD_ITAL_STAR  = re.compile(r"(?<!\*)\*([^*\n]+?)\*(?!\*)")
+_MD_ITAL_UNDER = re.compile(r"(?<!\w)_([^_\n]+?)_(?!\w)")
+# Triple-backtick fences (with or without language tag) — drop the fences,
+# keep the content. Greedy across newlines.
+_MD_FENCE      = re.compile(r"```[^\n`]*\n?(.*?)```", re.DOTALL)
+_MD_CODE       = re.compile(r"`([^`\n]+?)`")
+# Line-leading markers: headings, blockquotes, bullets.
+_MD_HEADING    = re.compile(r"(?m)^[ \t]*#{1,6}[ \t]+")
+_MD_BLOCKQUOTE = re.compile(r"(?m)^[ \t]*>[ \t]?")
+_MD_BULLET     = re.compile(r"(?m)^[ \t]*[-*+][ \t]+")
+
+_HTML_TAG      = re.compile(r"<[^>]+>")
+
+
+def _markdown(text: str) -> str:
+    """Strip markdown syntax, leaving the inner text. Not a full parser —
+    handles the high-value cases that ruin TTS output when a README is piped
+    in. Tolerant of unbalanced tokens."""
+    # Images before links (![alt](url) would otherwise lose its leading "!").
+    text = _MD_IMAGE.sub(r"\1", text)
+    text = _MD_LINK.sub(r"\1", text)
+    # Fenced code blocks before inline code so ``` doesn't get half-eaten by
+    # the inline rule.
+    text = _MD_FENCE.sub(r"\1", text)
+    text = _MD_CODE.sub(r"\1", text)
+    text = _MD_BOLD_STAR.sub(r"\1", text)
+    text = _MD_BOLD_UNDER.sub(r"\1", text)
+    text = _MD_STRIKE.sub(r"\1", text)
+    text = _MD_ITAL_STAR.sub(r"\1", text)
+    text = _MD_ITAL_UNDER.sub(r"\1", text)
+    text = _MD_HEADING.sub("", text)
+    text = _MD_BLOCKQUOTE.sub("", text)
+    text = _MD_BULLET.sub("", text)
+    return text
+
+
+def _html_strip(text: str) -> str:
+    """Strip HTML tags and decode entities. Tag-strip first (kills real tags),
+    then unescape (handles literal &lt;, &amp;, &nbsp; etc. in the remaining
+    text so they don't get round-tripped into a second strip pass)."""
+    text = _HTML_TAG.sub(" ", text)
+    text = _html.unescape(text)
+    return text
+
+
 # Emoji codepoint ranges, broad enough to catch faces, symbols, dingbats,
 # flags (regional indicators), the zero-width joiner used in emoji sequences,
 # variation selector-16, and the keycap combining mark.
@@ -272,6 +334,12 @@ RULES = {
                       "Strip emojis (default on for every engine except emojivoice — "
                       "without this, espeak-backed engines verbalize them as "
                       "\"loudly crying face\" etc.)"),
+    # Whole-text transforms. Pattern is None — dispatcher calls the function
+    # directly with the full string instead of going through re.sub.
+    "markdown":      (None, _markdown,
+                      "Strip markdown formatting (bold/italic/code/link/heading/list/quote)"),
+    "html":          (None, _html_strip,
+                      "Strip HTML tags and decode entities (&amp; → &)"),
 }
 
 # ── Engine default profiles ──────────────────────────────────────────────────
@@ -280,36 +348,42 @@ RULES = {
 
 ENGINE_PROFILES = {
     "kitten": [
+        "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "kokoro": [
         # Kokoro (via misaki) handles numbers, abbreviations, and some symbols natively
+        "markdown", "html",
         "currency", "percentage", "time", "date",
         "email", "url", "filename",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "piper": [
         # Piper handles almost nothing — needs everything
+        "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "coqui": [
         # Coqui handles basic numbers but not much else
+        "markdown", "html",
         "currency", "percentage", "time", "date",
         "email", "url", "filename", "abbreviation",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "pocket": [
         # Pocket doesn't handle any text normalization natively
+        "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
         "math", "ampersand", "hashtag", "emoji",
     ],
     "matcha": [
         # Matcha-TTS only phonemizes — it normalizes nothing, so apply everything.
+        "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
         "math", "ampersand", "hashtag", "emoji",
@@ -320,6 +394,7 @@ ENGINE_PROFILES = {
         # the emotion emoji itself (parse_emoji in the engine maps it to the
         # speaker id and strips it). Stripping it here would force every
         # utterance to the neutral speaker.
+        "markdown", "html",
         "currency", "percentage", "ordinal", "time", "date",
         "email", "url", "filename", "abbreviation", "number",
         "math", "ampersand", "hashtag",
@@ -352,11 +427,15 @@ def preprocess(text: str, engine: str = None, rules: list = None) -> str:
     # Apply rules in order. Order matters:
     # 0. Strip emoji first — they're disjoint from every other rule's regex
     #    range, but stripping early keeps later debug output readable.
-    # 1. URLs and emails before filename rule eats dots
-    # 2. Currency/percentage before numbers (so $100 isn't just "100")
-    # 3. Numbers last (catch remaining bare numbers)
+    # 1. Markdown + HTML next — strip formatting before the URL rule sees a
+    #    [text](https://example.com) link target, before the number rule
+    #    chokes on `**2**`, etc.
+    # 2. URLs and emails before filename rule eats dots
+    # 3. Currency/percentage before numbers (so $100 isn't just "100")
+    # 4. Numbers last (catch remaining bare numbers)
     priority = [
         "emoji",                                    # strip emoji first
+        "markdown", "html",                       # strip formatting before URL/number rules
         "email", "url",                          # capture structured patterns first
         "currency", "percentage",                  # money/percent before generic numbers
         "time", "date", "ordinal",                 # temporal + ordinal before numbers
@@ -372,7 +451,12 @@ def preprocess(text: str, engine: str = None, rules: list = None) -> str:
         if rule_name not in RULES:
             continue
         pattern, func, desc = RULES[rule_name]
-        text = re.sub(pattern, func, text)
+        if pattern is None:
+            # Whole-text transform (e.g. markdown, html) — func takes the
+            # full string and returns the rewritten string.
+            text = func(text)
+        else:
+            text = re.sub(pattern, func, text)
 
     # Collapse the runs of whitespace any rule (notably "emoji") may have
     # left behind. Idempotent and harmless when no rule produced extra spaces.
