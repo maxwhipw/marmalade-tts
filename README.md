@@ -795,6 +795,14 @@ Blank lines are skipped. The trigger is **implicit** (any multi-line input
 batches) — if you want a multi-line passage read as a single utterance,
 pre-join the lines on your end or pass it as a single argument.
 
+**Playback is streaming.** When a batch is being played, line N starts
+playing as soon as it has finished rendering, while line N+1 is still
+being synthesized in the background. The first line plays almost
+immediately and the rest stream behind it — big UX win for audiobook
+and long-form workflows. Playback order always matches input order;
+subtitle (`--srt` / `--vtt`) and `--json` output still describe the
+full batch once every line is done.
+
 ### Subtitles (SRT / WebVTT)
 
 Get a synchronized subtitle file alongside the generated WAV(s) with

@@ -553,6 +553,33 @@ def _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_
             print(f"[marmalade-tts] Generated: {r['out']}", file=sys.stderr)
 
 
+def _synthesize_one(utt, out_path, engine, args, eng_cfg, config,
+                    engine_name, effect_list, synth_kwargs):
+    """Run preprocessing → synth → effects → duration measurement for one
+    utterance. Returns the result dict (matching the existing shape consumed
+    by subtitles / --json / playback) or None if the preprocessed text is
+    empty (the line was just whitespace or got stripped to nothing).
+
+    Pulled out of main() so the sequential and streaming paths both call
+    into the same code and can't drift apart."""
+    processed = _resolve_preprocessing(utt, args, eng_cfg, config, engine_name)
+    if not processed.strip():
+        return None
+    engine.synthesize(processed, out_path, **synth_kwargs)
+    _apply_effects_if_any(out_path, effect_list, config)
+    # Measure duration AFTER effects — sox tempo/speed/fade change length.
+    try:
+        duration = wav_duration(out_path)
+    except Exception:
+        duration = 0.0
+    return {
+        "out": out_path,
+        "text": processed,
+        "raw_text": utt,
+        "duration": duration,
+    }
+
+
 def _write_subtitles(args, results):
     """Emit --srt / --vtt files if requested. Both flags are independent —
     passing both writes both. Cue text comes from `raw_text` (original
@@ -902,30 +929,108 @@ Examples:
             config.get("effects", {}).get("defaults", {}).get(engine_name, [])
         )
 
-    # ── Synthesize each utterance ──
+    # ── Synthesize + (maybe) play ──
     # Preprocessing runs per-line so an emoji on line 3 doesn't affect line 1,
     # and a blank line after preprocessing is silently skipped. We capture
     # `raw_text` (the user's original line, pre-preprocessing) for subtitles
     # so emoji/markdown the user typed show up readable in the .srt/.vtt
     # even though those chars are stripped before synthesis.
+    should_play = (auto_play or args.play) and not args.no_play
+
+    # Streaming path: only when we're actually going to play AND there's more
+    # than one utterance — single utterances have nothing to overlap with, and
+    # silent --out-only runs gain nothing from a background thread. A producer
+    # thread renders sequentially while the main thread plays in input order;
+    # subtitles and the --json/--print-path report still happen once all
+    # synthesis is done, so the user-visible final state is identical.
+    if should_play and is_batch:
+        import queue
+        import threading
+
+        play_q: "queue.Queue" = queue.Queue()
+        results: list = []
+        producer_error: list = []
+
+        def _produce():
+            try:
+                for utt, out_path in zip(utterances, out_paths):
+                    r = _synthesize_one(
+                        utt, out_path, engine, args, eng_cfg, config,
+                        engine_name, effect_list, synth_kwargs,
+                    )
+                    if r is None:
+                        continue
+                    results.append(r)
+                    play_q.put(r)
+            except BaseException as e:
+                producer_error.append(e)
+            finally:
+                play_q.put(None)  # sentinel: end of stream
+
+        prod = threading.Thread(
+            target=_produce, daemon=True, name="marmalade-producer")
+        prod.start()
+
+        # Consume in FIFO order — same order the producer pushed, which is the
+        # input order. Tmp WAVs (no --out / --out-dir) are cleaned up as we go,
+        # exactly like the non-streaming path does in a separate loop.
+        try:
+            while True:
+                r = play_q.get()
+                if r is None:
+                    break
+                play_wav(r["out"])
+                if not args.out and not args.out_dir and os.path.exists(r["out"]):
+                    try:
+                        os.unlink(r["out"])
+                    except OSError:
+                        pass
+        except KeyboardInterrupt:
+            # Best-effort cleanup of any tmp WAVs that were already rendered
+            # but not yet played. Producer is a daemon thread, so it dies
+            # with the process; we just don't leave files behind that we
+            # know the paths to.
+            if not args.out and not args.out_dir:
+                # Drain whatever's already in the queue without blocking.
+                try:
+                    while True:
+                        r = play_q.get_nowait()
+                        if r is None:
+                            continue
+                        if os.path.exists(r["out"]):
+                            try:
+                                os.unlink(r["out"])
+                            except OSError:
+                                pass
+                except queue.Empty:
+                    pass
+            raise
+
+        prod.join()
+
+        # Subtitles + report run whether or not the producer raised — they
+        # describe what *did* render successfully. The exception (if any)
+        # is then re-raised so the process exits non-zero with a clear cause.
+        _write_subtitles(args, results)
+        _report_outputs(args, engine_name, voice, results, effect_list,
+                        eng_cfg, is_batch)
+
+        if producer_error:
+            raise producer_error[0]
+        if not results:
+            sys.exit("[marmalade-tts] No text to synthesize after preprocessing")
+        return
+
+    # Non-streaming path: single utterance, --no-play, or --out-only run.
+    # Same sequential loop the CLI has always used — no thread spawned.
     results = []
     for utt, out_path in zip(utterances, out_paths):
-        processed = _resolve_preprocessing(utt, args, eng_cfg, config, engine_name)
-        if not processed.strip():
-            continue
-        engine.synthesize(processed, out_path, **synth_kwargs)
-        _apply_effects_if_any(out_path, effect_list, config)
-        # Measure duration AFTER effects — sox tempo/speed/fade change length.
-        try:
-            duration = wav_duration(out_path)
-        except Exception:
-            duration = 0.0
-        results.append({
-            "out": out_path,
-            "text": processed,
-            "raw_text": utt,
-            "duration": duration,
-        })
+        r = _synthesize_one(
+            utt, out_path, engine, args, eng_cfg, config,
+            engine_name, effect_list, synth_kwargs,
+        )
+        if r is not None:
+            results.append(r)
 
     if not results:
         sys.exit("[marmalade-tts] No text to synthesize after preprocessing")
@@ -937,7 +1042,6 @@ Examples:
     _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch)
 
     # ── Playback ──
-    should_play = (auto_play or args.play) and not args.no_play
     if should_play:
         for r in results:
             play_wav(r["out"])
