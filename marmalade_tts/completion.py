@@ -89,7 +89,7 @@ _marmalade_tts() {{
     local install_flags="{install_flags}"
     local config_paths="{config_paths}"
     local effect_names="{effect_names}"
-    local flags="--out --play --no-play --speed --voice --lang --speaker \\
+    local flags="--out --out-dir --srt --vtt --play --no-play --speed --voice --lang --speaker \\
                  --speaker-wav --emotion \\
                  --fast --balanced --quality \\
                  --effect --no-effects --list-effects --list --list-aliases \\
@@ -177,6 +177,22 @@ _marmalade_tts() {{
         return
     fi
 
+    # Subtitle outputs — restrict by extension
+    if [[ "$prev" == "--srt" ]]; then
+        _filedir srt
+        return
+    fi
+    if [[ "$prev" == "--vtt" ]]; then
+        _filedir vtt
+        return
+    fi
+
+    # Directory completion for --out-dir (batch synthesis target)
+    if [[ "$prev" == "--out-dir" ]]; then
+        _filedir -d
+        return
+    fi
+
     # Flags anywhere
     if [[ "$cur" == -* ]]; then
         COMPREPLY=( $(compgen -W "$flags" -- "$cur") )
@@ -230,6 +246,9 @@ _marmalade-tts() {{
         '2:voice or text:->arg2' \\
         '*::text:' \\
         '--out[Output WAV file]:file:_files' \\
+        '--out-dir[Output directory for batch synthesis]:directory:_files -/' \\
+        '--srt[Write SRT subtitle file]:file:_files -g "*.srt"' \\
+        '--vtt[Write WebVTT subtitle file]:file:_files -g "*.vtt"' \\
         '--play[Force playback]' \\
         '--no-play[Skip playback]' \\
         '--quiet[Suppress non-audio output]' \\

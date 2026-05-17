@@ -21,10 +21,13 @@ from marmalade_tts.daemon import is_running, status
 def has_engine(engine: str) -> bool:
     """Check if an engine's binary/venv is available."""
     checks = {
-        "kitten": os.path.exists(os.path.expanduser("~/.local/share/kittentts-venv/bin/python")),
-        "kokoro": bool(shutil.which("kokoro")),
-        "piper":  bool(shutil.which("piper")),
-        "coqui":  bool(shutil.which("tts")),
+        "kitten":     os.path.exists(os.path.expanduser("~/.local/share/kittentts-venv/bin/python")),
+        "kokoro":     bool(shutil.which("kokoro")),
+        "piper":      bool(shutil.which("piper")),
+        "coqui":      bool(shutil.which("tts")),
+        "pocket":     os.path.exists(os.path.expanduser("~/.local/share/pocket-tts-venv/bin/python")),
+        "matcha":     os.path.exists(os.path.expanduser("~/.local/share/matcha-tts-venv/bin/python")),
+        "emojivoice": os.path.exists(os.path.expanduser("~/.local/share/emojivoice-venv/bin/python")),
     }
     return checks.get(engine, False)
 
@@ -139,6 +142,39 @@ def test_piper_list_voices():
         capture_output=True, text=True, cwd=os.path.join(os.path.dirname(__file__), "..")
     )
     assert r.returncode == 0
+
+
+@pytest.mark.smoke
+@pytest.mark.skipif(not has_engine("pocket"), reason="pocket not installed")
+def test_pocket_list_voices():
+    r = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '.'); from marmalade_tts.engines.pocket import PocketEngine; PocketEngine({}).list_voices()"],
+        capture_output=True, text=True, cwd=os.path.join(os.path.dirname(__file__), "..")
+    )
+    assert "alba" in r.stdout or "fantine" in r.stdout
+
+
+@pytest.mark.smoke
+@pytest.mark.skipif(not has_engine("matcha"), reason="matcha not installed")
+def test_matcha_list_voices():
+    r = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '.'); from marmalade_tts.engines.matcha import MatchaEngine; MatchaEngine({}).list_voices()"],
+        capture_output=True, text=True, cwd=os.path.join(os.path.dirname(__file__), "..")
+    )
+    assert "matcha_ljspeech" in r.stdout or "matcha_vctk" in r.stdout
+
+
+@pytest.mark.smoke
+@pytest.mark.skipif(not has_engine("emojivoice"), reason="emojivoice not installed")
+def test_emojivoice_list_voices():
+    r = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '.'); from marmalade_tts.engines.emojivoice import EmojiVoiceEngine; EmojiVoiceEngine({}).list_voices()"],
+        capture_output=True, text=True, cwd=os.path.join(os.path.dirname(__file__), "..")
+    )
+    assert "paige" in r.stdout
 
 
 # ── Effects smoke tests ──────────────────────────────────────────────────────
