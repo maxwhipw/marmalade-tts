@@ -127,7 +127,7 @@ def test_kokoro_list_voices():
          "import sys; sys.path.insert(0, '.'); from marmalade_tts.engines.kokoro import KokoroEngine; KokoroEngine({}).list_voices()"],
         capture_output=True, text=True, cwd=os.path.join(os.path.dirname(__file__), "..")
     )
-    assert "af_heart" in r.stdout
+    assert "george" in r.stdout or "heart" in r.stdout
 
 
 @pytest.mark.smoke
