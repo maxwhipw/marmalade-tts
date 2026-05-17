@@ -26,6 +26,11 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 
+[project.optional-dependencies]
+# Optional MCP (Model Context Protocol) server so AI agents can drive
+# marmalade-tts directly. Install with: pip install marmalade-tts[mcp]
+mcp = ["mcp>=1.0"]
+
 [project.scripts]
 marmalade-tts = "marmalade_tts.cli:main"
 

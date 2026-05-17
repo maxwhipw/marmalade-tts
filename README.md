@@ -703,6 +703,20 @@ Exit codes:
 - non-zero — failure. Specific codes are not promised; expect `1` for
   user-visible errors and `2` from argparse for bad flags.
 
+### MCP server (for AI agents)
+
+marmalade-tts also ships a [Model Context Protocol](https://modelcontextprotocol.io/)
+server so AI agents can drive it directly:
+
+```sh
+pip install marmalade-tts[mcp]
+claude mcp add marmalade-tts -- marmalade-tts mcp
+```
+
+Three tools: `synthesize`, `list_voices`, and `find_voice` (free-text
+voice search — "warm British male" → `george`). Full setup and tool
+reference in [docs/mcp.md](docs/mcp.md).
+
 ---
 
 ## Text Input Methods

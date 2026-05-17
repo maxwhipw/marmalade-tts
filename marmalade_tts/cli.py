@@ -530,6 +530,15 @@ def main():
     if argv and argv[0] == "install":
         cmd_install(argv[1:])
         return
+    if argv and argv[0] == "mcp":
+        from . import mcp_server
+        try:
+            mcp_server.run()
+        except ImportError:
+            print("MCP support not installed. Run: pip install marmalade-tts[mcp]",
+                  file=sys.stderr)
+            sys.exit(1)
+        return
     if argv and argv[0] == "--list-effects":
         config_tmp = cfg_mod.load()
         user_presets = config_tmp.get("effects", {}).get("presets", {})
