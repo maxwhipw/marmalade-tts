@@ -139,6 +139,49 @@ Two paths, in order of preference:
 it. This silently breaks the user's `--speed` flag. If you genuinely
 can't honor it, raise an explicit error — don't lie.
 
+### Expose every native feature as a knob (required)
+
+When you add an engine, audit the upstream library's runtime API and
+expose every meaningful parameter as a config key. Do not hardcode
+choices the user might reasonably want to change. The same anti-pattern
+that produced the `--speed` silent-drop produced everything else this
+guide had to backfill — flagged-but-unwired knobs (coqui's speed,
+piper's voice), hidden expressivity knobs (matcha's `steps`/
+`temperature`, piper's `noise_scale`), and missing model-specific
+features (coqui's `speaker_wav` for XTTS cloning, coqui's `emotion` for
+Tortoise).
+
+How to decide where each knob lives:
+
+| Knob shape                         | Surface as           |
+|------------------------------------|----------------------|
+| Per-utterance choice (voice, language, speaker, emotion) | CLI flag + config key |
+| Tuning knob (expressivity, sampling temperature, solver steps) | Config-only          |
+| Voice-cloning reference            | CLI flag + config key (so an LLM agent can switch references per turn) |
+| Anything the upstream library lets you set per-call | Plumb through both subprocess and daemon paths |
+
+Pattern for optional knobs that have an upstream default:
+
+```python
+self.knob = cfg.get("knob")   # None means "use upstream's default"
+...
+if self.knob is not None:                 # don't pass when unset
+    request["knob"] = float(self.knob)    # → daemon
+    cmd += ["--knob", str(self.knob)]     # → subprocess
+```
+
+`None` ≠ falsy. Use `is not None`, not truthiness — a config value of
+`0` or `""` is a deliberate setting, not "unset". See
+[`engines/coqui.py`](marmalade_tts/engines/coqui.py) for the in-tree
+example covering speed, speaker, speaker_idx, language, speaker_wav,
+and emotion.
+
+Document the new knobs in:
+- `marmalade_tts/config.py` (DEFAULT_CONFIG)
+- `config-default.yaml` (annotated example)
+- `marmalade_tts/completion.py` (config paths for tab-completion)
+- `docs/engine-knobs.md` (the user-facing reference)
+
 ---
 
 ## Step 2 — Register in `cli.py`

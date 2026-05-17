@@ -10,6 +10,9 @@ render via GitHub Pages / Forgejo Pages with no source-format change.
 - **[Engine knobs](engine-knobs.md)** — every per-engine parameter
   (voice, speed, expressivity knobs, model-specific options) and how to
   pass it from the CLI or config.
+- **[Voice cloning](voice-cloning.md)** — how to clone a voice with
+  pocket (instant, English) or Coqui XTTS v2 (17 languages). Includes
+  reference-clip quality tips.
 - **[Roadmap](ROADMAP.md)** — planned and in-flight work.
 - **Setup** → see [INSTALL.md](../INSTALL.md) at the repo root.
 - **Adding a new engine** → see [ENGINE-GUIDE.md](../ENGINE-GUIDE.md).

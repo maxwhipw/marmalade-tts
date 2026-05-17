@@ -128,7 +128,8 @@ ignored, the model just didn't honor it — Coqui doesn't error on
 unrecognized kwargs.
 
 XTTS v2 is the marquee model — voice cloning from a 6-second reference
-WAV in 17 languages.
+WAV in 17 languages. See [voice-cloning.md](voice-cloning.md) for the
+end-to-end setup including reference-clip quality tips.
 
 ```bash
 # Multi-speaker VITS-VCTK
@@ -156,6 +157,7 @@ CPU-only, ~200ms latency, voice cloning from any WAV. English only.
 | speed | `--speed`   | `defaults.speed`      | 1.0     | Via sox post-process (pocket-tts has no native knob) |
 
 Voice cloning is positional: `marmalade-tts pocket my_voice.wav "Hello"`.
+See [voice-cloning.md](voice-cloning.md) for the full how-to.
 
 ```bash
 marmalade-tts pocket fantine "Hello"
