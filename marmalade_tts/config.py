@@ -64,6 +64,11 @@ DEFAULT_CONFIG = {
             "daemon": False,
         },
     },
+    # Aliases: named bundles (engine + voice + speed + …) invoked positionally
+    # like an engine name — e.g. `marmalade-tts narrator "Once upon a time"`.
+    # Engine names are reserved; an alias that shadows one is ignored with a
+    # warning. Explicit CLI flags override alias defaults.
+    "aliases": {},
 }
 
 

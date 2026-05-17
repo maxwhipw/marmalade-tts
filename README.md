@@ -283,6 +283,39 @@ speaker checkpoint.
 
 ---
 
+## Voice aliases / personas
+
+Define named bundles in your config and invoke them positionally like an
+engine name. Handy for recurring characters or styles:
+
+```yaml
+# ~/.config/marmalade-tts/config.yaml
+aliases:
+  narrator:
+    engine: kokoro
+    voice: george
+    speed: 0.95
+    effects: ["reverb=15"]
+  villain:
+    engine: emojivoice
+    voice: paige
+    effects: ["pitch=-200", "reverb=40"]
+```
+
+```sh
+marmalade-tts narrator "Once upon a time"
+marmalade-tts villain "You shall not pass"
+marmalade-tts narrator "Now slower" --speed 0.7   # explicit flag wins
+marmalade-tts --list-aliases                       # what's configured?
+```
+
+Precedence: explicit CLI flags > alias defaults > engine config defaults.
+`--no-effects` still kills everything; `--effect` still replaces the
+default effect list (including the alias's). Aliases that collide with
+an engine name are ignored with a warning — engine names are reserved.
+
+---
+
 ## Speed Presets
 
 Choose a quality/speed tradeoff that picks the appropriate model variant:

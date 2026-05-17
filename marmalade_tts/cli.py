@@ -481,6 +481,52 @@ def _resolve_out_paths(args, n: int, config: dict, parser):
             config.get("defaults", {}).get("play", True))
 
 
+def _print_aliases(aliases: dict) -> None:
+    """Pretty-print the configured aliases. Used by --list-aliases."""
+    if not aliases:
+        print("No aliases configured.")
+        print()
+        print("Define them in ~/.config/marmalade-tts/config.yaml under `aliases:`,")
+        print("for example:")
+        print()
+        print("  aliases:")
+        print("    narrator:")
+        print("      engine: kokoro")
+        print("      voice: george")
+        print("      speed: 0.95")
+        print("      effects: [\"reverb=15\"]")
+        return
+    print("Configured aliases:")
+    print()
+    for name, spec in aliases.items():
+        spec = spec or {}
+        engine = spec.get("engine", "?")
+        bits = []
+        voice = spec.get("voice")
+        if voice:
+            bits.append(f"voice={voice}")
+        speed = spec.get("speed")
+        if speed is not None:
+            bits.append(f"speed={speed}×")
+        lang = spec.get("lang")
+        if lang:
+            bits.append(f"lang={lang}")
+        speaker = spec.get("speaker")
+        if speaker:
+            bits.append(f"speaker={speaker}")
+        emotion = spec.get("emotion")
+        if emotion:
+            bits.append(f"emotion={emotion}")
+        effects = spec.get("effects")
+        if effects:
+            bits.append(f"effects={effects}")
+        speaker_wav = spec.get("speaker_wav")
+        if speaker_wav:
+            bits.append(f"speaker_wav={speaker_wav}")
+        suffix = (" — " + ", ".join(bits)) if bits else ""
+        print(f"  {name} → {engine}{suffix}")
+
+
 def _report_outputs(args, engine_name, voice, results, effect_list, eng_cfg, is_batch):
     """Print results in the user-requested format. For batch, --json prints
     a JSON array (one element per utterance); for single, --json keeps the
@@ -544,13 +590,62 @@ def main():
         user_presets = config_tmp.get("effects", {}).get("presets", {})
         fx.list_effects(user_presets)
         return
+
+    if argv and argv[0] == "--list-aliases":
+        config_tmp = cfg_mod.load()
+        _print_aliases(config_tmp.get("aliases") or {})
+        return
+
+    # ── Alias expansion + default-engine injection ──
+    # Both need the config; load it once and share. Aliases are config-defined
+    # named bundles (engine + voice + speed + …) invoked positionally like an
+    # engine name. Engine names are reserved — an alias whose name collides
+    # with an engine name is ignored with a warning (config might be partial
+    # during edits; don't hard-fail).
+    alias_overrides = None
+    _config_tmp = None
+    if argv:
+        _config_tmp = cfg_mod.load()
+        aliases = _config_tmp.get("aliases") or {}
+        name = argv[0]
+        if name in aliases:
+            if name in ENGINE_NAMES:
+                # Reserved-name collision — engine wins, skip the alias.
+                print(
+                    f"[marmalade-tts] Warning: alias {name!r} shadows engine "
+                    f"name and is ignored.",
+                    file=sys.stderr,
+                )
+            else:
+                spec = aliases[name] or {}
+                engine = spec.get("engine")
+                if not engine:
+                    print(
+                        f"[marmalade-tts] Alias {name!r} has no 'engine' field.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                if engine not in ENGINE_NAMES:
+                    print(
+                        f"[marmalade-tts] Alias {name!r} references unknown "
+                        f"engine {engine!r}.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                # Rewrite argv so the rest of dispatch sees the engine name,
+                # and stash the rest of the alias spec for later merging.
+                argv[0] = engine
+                sys.argv = [sys.argv[0]] + argv
+                alias_overrides = {k: v for k, v in spec.items() if k != "engine"}
+
     # ── If first token is not an engine name, inject default engine ──
     # This enables: marmalade-tts "hello" (uses defaults.engine)
     # and:          marmalade-tts --fast "hello"
     first_is_engine = argv and argv[0] in ENGINE_NAMES
     if not first_is_engine and argv:
-        config_tmp = cfg_mod.load()
-        default_eng = config_tmp.get("defaults", {}).get("engine", "kitten")
+        if _config_tmp is None:
+            _config_tmp = cfg_mod.load()
+        default_eng = _config_tmp.get("defaults", {}).get("engine", "kitten")
         argv.insert(0, default_eng)
         sys.argv = [sys.argv[0]] + argv
 
@@ -643,6 +738,8 @@ Examples:
                         help="Skip all effects, including engine defaults from config.")
     parser.add_argument("--list-effects", action="store_true",
                         help="List all available audio effects and presets")
+    parser.add_argument("--list-aliases", action="store_true",
+                        help="List configured voice aliases / personas")
     parser.add_argument("--list", action="store_true",
                         help="List voices/models for the engine")
     parser.add_argument("--version", action="version",
@@ -668,6 +765,13 @@ Examples:
     if args.list_rules:
         print("Available preprocessing rules:")
         pp.list_rules()
+        return
+
+    # ── List aliases (also handled as a quick intercept above, but this
+    # catches `marmalade-tts kokoro --list-aliases` etc.) ──
+    if args.list_aliases:
+        config = cfg_mod.load()
+        _print_aliases(config.get("aliases") or {})
         return
 
     # ── Load config ──
@@ -711,33 +815,58 @@ Examples:
     is_batch = len(utterances) > 1
 
     # ── Resolve voice ──
+    # Precedence: --voice > positional voice token > alias.voice
     voice = args.voice or voice_arg
+    if voice is None and alias_overrides and alias_overrides.get("voice"):
+        voice = alias_overrides["voice"]
 
     # ── Output paths ──
     out_paths, auto_play = _resolve_out_paths(args, len(utterances), config, parser)
 
     # ── Speed ──
-    speed = args.speed or config.get("defaults", {}).get("speed", 1.0)
+    # Precedence: --speed > alias.speed > defaults.speed
+    if args.speed is not None:
+        speed = args.speed
+    elif alias_overrides and alias_overrides.get("speed") is not None:
+        speed = alias_overrides["speed"]
+    else:
+        speed = config.get("defaults", {}).get("speed", 1.0)
 
     # ── Synth kwargs (the same for every utterance in a batch) ──
+    # Each kwarg follows the same null-fallback pattern: explicit CLI flag
+    # wins, then alias default, then engine defaults are left to the engine.
     synth_kwargs = {"speed": speed}
     if voice:
         synth_kwargs["voice"] = voice
-    if args.lang:
-        synth_kwargs["lang"] = args.lang
-    if args.speaker:
-        synth_kwargs["speaker"] = args.speaker
-    if args.speaker_wav:
-        synth_kwargs["speaker_wav"] = args.speaker_wav
-    if args.emotion:
-        synth_kwargs["emotion"] = args.emotion
+    lang = args.lang or (alias_overrides.get("lang") if alias_overrides else None)
+    if lang:
+        synth_kwargs["lang"] = lang
+    speaker = args.speaker or (alias_overrides.get("speaker") if alias_overrides else None)
+    if speaker:
+        synth_kwargs["speaker"] = speaker
+    speaker_wav = args.speaker_wav or (alias_overrides.get("speaker_wav") if alias_overrides else None)
+    if speaker_wav:
+        synth_kwargs["speaker_wav"] = speaker_wav
+    emotion = args.emotion or (alias_overrides.get("emotion") if alias_overrides else None)
+    if emotion:
+        synth_kwargs["emotion"] = emotion
+    # Pass through any extra alias keys we don't recognise — the engine will
+    # honor what it understands and ignore the rest. (See design rule #5.)
+    if alias_overrides:
+        for k, v in alias_overrides.items():
+            if k in ("voice", "speed", "lang", "speaker", "speaker_wav",
+                     "emotion", "effects"):
+                continue
+            synth_kwargs.setdefault(k, v)
 
     # ── Effects: same for every utterance ──
-    # Precedence: --no-effects > --effect flags > engine defaults from config.
+    # Precedence: --no-effects > --effect flags > alias.effects > engine defaults.
     if args.no_effects:
         effect_list = []
     elif args.effects:
         effect_list = args.effects
+    elif alias_overrides and alias_overrides.get("effects"):
+        effect_list = alias_overrides["effects"]
     else:
         effect_list = (
             config.get("effects", {}).get("defaults", {}).get(engine_name, [])

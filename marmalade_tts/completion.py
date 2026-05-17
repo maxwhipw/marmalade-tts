@@ -1,5 +1,6 @@
 """Shell tab-completion generation."""
 
+from . import config as cfg_mod
 from .effects import EFFECTS, BUILTIN_PRESETS
 from .engines.kitten import VOICES as KITTEN_VOICES
 from .engines.kokoro import VOICE_ALIASES as _KOKORO_ALIASES
@@ -44,8 +45,20 @@ CONFIG_PATHS = [
 EFFECT_NAMES = list(EFFECTS.keys()) + list(BUILTIN_PRESETS.keys())
 
 
+def _alias_names() -> list:
+    """Read configured alias names from disk. Best-effort — never raises."""
+    try:
+        cfg = cfg_mod.load()
+        aliases = cfg.get("aliases") or {}
+        # Skip aliases that shadow engine names (those are ignored at runtime).
+        return [n for n in aliases.keys() if n not in ENGINES]
+    except Exception:
+        return []
+
+
 def bash_completion() -> str:
     engines = " ".join(ENGINES)
+    aliases = " ".join(_alias_names())
     kitten_voices = " ".join(KITTEN_VOICES)
     kokoro_voices = " ".join(KOKORO_VOICES)
     pocket_voices = " ".join(POCKET_VOICES)
@@ -65,6 +78,7 @@ _marmalade_tts() {{
     _init_completion || return
 
     local engines="{engines}"
+    local aliases="{aliases}"
     local subcommands="{subcommands}"
     local kitten_voices="{kitten_voices}"
     local kokoro_voices="{kokoro_voices}"
@@ -78,14 +92,14 @@ _marmalade_tts() {{
     local flags="--out --play --no-play --speed --voice --lang --speaker \\
                  --speaker-wav --emotion \\
                  --fast --balanced --quality \\
-                 --effect --no-effects --list-effects --list \\
+                 --effect --no-effects --list-effects --list --list-aliases \\
                  --preprocessing --no-preprocessing \\
                  --list-rules --completion --quiet -q --json --print-path \\
                  --stdin --text -t --version --help -h"
 
-    # First positional: engine or subcommand
+    # First positional: engine, alias, or subcommand
     if [[ $cword -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "$engines $subcommands" -- "$cur") )
+        COMPREPLY=( $(compgen -W "$engines $aliases $subcommands" -- "$cur") )
         return
     fi
 
@@ -176,6 +190,7 @@ complete -F _marmalade_tts marmalade-tts
 
 def zsh_completion() -> str:
     engines = " ".join(ENGINES)
+    aliases = " ".join(_alias_names())
     kitten_voices = " ".join(KITTEN_VOICES)
     kokoro_voices = " ".join(KOKORO_VOICES)
     pocket_voices = " ".join(POCKET_VOICES)
@@ -189,6 +204,7 @@ def zsh_completion() -> str:
 _marmalade-tts() {{
     local curcontext="$curcontext" state line
     local -a engines=({engines})
+    local -a aliases=({aliases})
     local -a subcommands=(config daemon init install)
     local -a kitten_voices=({kitten_voices})
     local -a kokoro_voices=({kokoro_voices})
@@ -210,7 +226,7 @@ _marmalade-tts() {{
     }}
 
     _arguments -C \\
-        '1:engine or subcommand:->engine' \\
+        '1:engine, alias or subcommand:->engine' \\
         '2:voice or text:->arg2' \\
         '*::text:' \\
         '--out[Output WAV file]:file:_files' \\
@@ -233,6 +249,7 @@ _marmalade-tts() {{
         '*--effect[Audio effect]:effect:(($effect_names))' \\
         '--no-effects[Skip all effects, including config defaults]' \\
         '--list-effects[List available audio effects and presets]' \\
+        '--list-aliases[List configured voice aliases / personas]' \\
         '--list[List voices]' \\
         '--preprocessing[Enable text preprocessing]' \\
         '--no-preprocessing[Disable text preprocessing]' \\
@@ -242,7 +259,7 @@ _marmalade-tts() {{
 
     case $state in
         engine)
-            _values 'engine or subcommand' $engines $subcommands
+            _values 'engine, alias or subcommand' $engines $aliases $subcommands
             ;;
         arg2)
             # Second positional: a voice for kitten/kokoro/pocket/piper,
