@@ -22,9 +22,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   Context Protocol server with three tools: `synthesize`, `list_voices`,
   and `find_voice`. `find_voice` takes a free-text description ("warm
   British male", "energetic young female") and returns the top three
-  shipped voices with a `why` field naming the matched terms — pure
-  keyword-overlap scoring against a curated description table, no LLM
-  call, inspectable. The MCP SDK is an optional dep
+  shipped voices with a `why` field naming the matched terms — word-token
+  overlap against a curated description table (so "male" doesn't match
+  inside "female"), no LLM call, inspectable. `synthesize` routes through
+  the same shared synth module the CLI uses, so preprocessing rules
+  apply uniformly. The MCP SDK is an optional dep
   (`pip install marmalade-tts[mcp]`); without it, `marmalade-tts mcp`
   prints an install hint and exits 1. Add to Claude Code with
   `claude mcp add marmalade-tts -- marmalade-tts mcp`. Full setup in
@@ -56,23 +58,30 @@ This project follows [Semantic Versioning](https://semver.org/).
   after effects are applied, with a 50 ms gap between consecutive cues.
   Works for both single and batch input; pass both flags to write both
   files. `--json` output also gains a `duration` field per utterance.
+  `--srt`, `--vtt`, and `--out-dir` all tab-complete in bash and zsh.
 - **`markdown` and `html` preprocessing rules.** A piped README no
   longer reads `**hello**` as "asterisk asterisk hello asterisk
   asterisk" or `<p>hi</p>` as "less than p greater than hi …". The
   `markdown` rule drops bold/italic/code/heading/blockquote/list/link/
   image syntax — link targets are dropped, only the visible text reads
-  aloud. The `html` rule strips tags and decodes entities via
-  `html.unescape`. Both are added to every engine profile (universally
-  safe) and ordered before `url`/`email` so `[text](https://example.com)`
-  comes out as just "text".
+  aloud. Python dunders (`__init__`, `__name__`, `__main__`, `__repr__`,
+  …) are preserved via a known-dunder denylist so prose about Python
+  code reads correctly. The `html` rule strips tags and decodes entities
+  via `html.unescape`. Both are added to every engine profile
+  (universally safe) and ordered before `url`/`email` so
+  `[text](https://example.com)` comes out as just "text".
 - **Pronunciation dictionary.** New `pronounce` preprocessing rule
   reads `~/.config/marmalade-tts/pronunciations.yaml` on first use and
   substitutes whole-word, case-insensitive matches with their spoken
   form. Missing or empty file → no-op. Hyphenated keys are allowed
-  (`marmalade-tts: marmalade T T S`); keys sorted longest-first so
-  multi-word entries beat their prefixes. Placed late in the rule
-  order, after numbers/abbreviations, so substitutions operate on
-  already-normalized text.
+  (`marmalade-tts: marmalade T T S`) and the match boundary treats `-`
+  as a non-boundary char, so a key `marmalade-tts` won't bleed into a
+  compound like `marmalade-tts-cli`. Empty / non-string YAML keys are
+  filtered before the regex compiles, so a `"": foo` typo can't
+  garble every utterance. Keys sorted longest-first so multi-word
+  entries beat their prefixes. Placed late in the rule order, after
+  numbers/abbreviations, so substitutions operate on already-normalized
+  text.
 - **Quality knobs for matcha + emojivoice.** Both engines now read
   `engines.matcha.steps` / `engines.matcha.temperature` (and the
   emojivoice equivalents) from config. `steps` is matcha-tts's
