@@ -106,6 +106,36 @@ Engine venvs live at `~/.local/share/<engine>-venv`. The manual,
 under-the-hood steps are documented in `INSTALL.md` as a fallback — but
 `init` / `install` is the supported path.
 
+### Uninstalling
+
+`marmalade-tts uninstall` is the mirror image of `install` — tiered,
+interactive by default, and conservative about what it touches.
+
+```sh
+marmalade-tts uninstall              # interactive: pick a tier or engine
+marmalade-tts uninstall kokoro       # one engine: venv + unit + sock/pid/log
+marmalade-tts uninstall --engines    # every engine; keeps daemon dir + config
+marmalade-tts uninstall --purge      # everything CLI-managed
+marmalade-tts uninstall --purge --dry-run   # see the plan first; touches nothing
+marmalade-tts uninstall kokoro -y    # skip the y/N prompt
+```
+
+What it does **NOT** delete:
+
+- **The CLI itself.** `~/.local/bin/marmalade-tts` and the Python package
+  are never removed. At the end of `--purge` we print the install-method
+  command for that (`pipx uninstall`, `sudo apt remove`, etc).
+- **The HuggingFace cache** (`~/.cache/huggingface/hub/`) — shared with
+  other tools. Clean manually with `huggingface-cli scan-cache` if you
+  want kitten/kokoro/pocket weights gone.
+- **User voice files outside marmalade's dirs.** If you've pointed
+  `engines.pocket.voice` at `~/recordings/me.wav`, that file is left
+  alone.
+
+Safety: deletes are gated by a path whitelist, symlinks are refused,
+each directory is verified by a marker file (e.g. `pyvenv.cfg`) before
+removal, and the command exits non-zero if any path fails.
+
 ---
 
 ## Engines

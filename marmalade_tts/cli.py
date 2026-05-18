@@ -308,6 +308,153 @@ def cmd_init(args: list):
         sys.exit(1)
 
 
+def cmd_uninstall(args: list):
+    """Handle `marmalade-tts uninstall [<engine>] [--engines] [--purge] ...`.
+
+    Tiered cleanup of CLI-managed state. Mirrors ``marmalade-tts install``:
+
+      marmalade-tts uninstall              # interactive: pick a tier / engine
+      marmalade-tts uninstall <engine>     # one engine (venv + unit + sock/pid/log)
+      marmalade-tts uninstall --engines    # every engine; keep config + daemon dir
+      marmalade-tts uninstall --purge      # everything CLI-managed
+      marmalade-tts uninstall --dry-run    # print the plan, don't touch anything
+      marmalade-tts uninstall -y           # skip the confirmation prompt
+
+    The CLI binary itself and the HuggingFace cache are NEVER deleted by
+    this command (the HF cache is shared with other tools). On --purge we
+    print the install-method-specific removal command for the CLI.
+    """
+    import argparse as _ap
+
+    from . import uninstaller
+    from .init import _is_tty
+
+    parser = _ap.ArgumentParser(
+        prog="marmalade-tts uninstall", add_help=True,
+        description="Remove CLI-managed state (engine venvs, daemon scripts, "
+                    "systemd units, sockets/pids/logs, config). NEVER removes "
+                    "the CLI binary itself or the HuggingFace cache.")
+    parser.add_argument("engine", nargs="?", default=None,
+                        help=f"single engine to uninstall: "
+                             f"{', '.join(uninstaller.INSTALL_RECIPES)}")
+    parser.add_argument("--engines", action="store_true",
+                        help="uninstall all engines (keep daemon dir + config)")
+    parser.add_argument("--purge", action="store_true",
+                        help="uninstall everything CLI-managed (engines + "
+                             "daemon dir + config + pronunciations + all "
+                             "systemd units)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="print the plan and exit without touching anything")
+    parser.add_argument("-y", "--yes", action="store_true",
+                        help="skip the interactive confirmation prompt")
+    parsed = parser.parse_args(args)
+
+    # ── Resolve tier ──
+    chosen = [bool(parsed.engine), parsed.engines, parsed.purge]
+    if sum(chosen) > 1:
+        print("[uninstall] pick at most one of: <engine>, --engines, --purge",
+              file=sys.stderr)
+        sys.exit(1)
+
+    tier = None  # "engine" | "engines" | "purge"
+    engine_name = None
+    if parsed.engine:
+        if parsed.engine not in uninstaller.INSTALL_RECIPES:
+            print(f"[uninstall] unknown engine: {parsed.engine!r}\n"
+                  f"  known: {', '.join(uninstaller.INSTALL_RECIPES)}",
+                  file=sys.stderr)
+            sys.exit(1)
+        tier, engine_name = "engine", parsed.engine
+    elif parsed.engines:
+        tier = "engines"
+    elif parsed.purge:
+        tier = "purge"
+
+    # ── Interactive tier picker (no args + TTY) ──
+    if tier is None:
+        if not _is_tty():
+            print("[uninstall] No tier specified. Pass <engine>, --engines, "
+                  "--purge, or run interactively from a TTY.", file=sys.stderr)
+            sys.exit(1)
+        print("marmalade-tts uninstall — what should I remove?\n")
+        print("  1) a single engine          (its venv + unit + sock/pid/log)")
+        print("  2) all engines              (keeps daemon dir + config)")
+        print("  3) PURGE everything         (engines + daemon dir + config)")
+        print("  q) cancel")
+        try:
+            resp = input("\n  Choice [1/2/3/q]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            resp = "q"
+        if resp == "1":
+            print("\n  Engines: " + ", ".join(uninstaller.INSTALL_RECIPES))
+            try:
+                engine_name = input("  Engine name: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                engine_name = ""
+            if engine_name not in uninstaller.INSTALL_RECIPES:
+                print(f"[uninstall] unknown engine: {engine_name!r}",
+                      file=sys.stderr)
+                sys.exit(1)
+            tier = "engine"
+        elif resp == "2":
+            tier = "engines"
+        elif resp == "3":
+            tier = "purge"
+        else:
+            print("[uninstall] cancelled.")
+            return
+
+    # ── Build the plan + print it ──
+    if tier == "engine":
+        plan = uninstaller.plan_for_engine(engine_name)
+        header = f"Plan for: uninstall {engine_name}"
+    elif tier == "engines":
+        plan = uninstaller.plan_for_all_engines()
+        header = "Plan for: uninstall --engines  (every engine)"
+    else:  # purge
+        plan = uninstaller.plan_for_purge()
+        header = "Plan for: uninstall --purge  (EVERYTHING CLI-managed)"
+
+    uninstaller.print_plan(plan, header)
+
+    # ── Dry-run wins over -y ──
+    if parsed.dry_run:
+        print("\n[uninstall] --dry-run: no files were touched.")
+        return
+
+    # ── Confirm in interactive mode unless -y was given ──
+    if not parsed.yes and _is_tty():
+        try:
+            resp = input("\nProceed? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            resp = ""
+        if resp not in ("y", "yes"):
+            print("[uninstall] aborted.")
+            return
+
+    # ── Execute ──
+    if tier == "engine":
+        report = uninstaller.uninstall_engine(engine_name, dry_run=False)
+    elif tier == "engines":
+        report = uninstaller.uninstall_all_engines(dry_run=False)
+    else:
+        report = uninstaller.purge(dry_run=False)
+
+    # ── Summary ──
+    print("\n[uninstall] ━━ summary ━━")
+    print(f"  removed: {len(report.removed)}")
+    print(f"  skipped (already gone): {len(report.skipped)}")
+    print(f"  failed:  {len(report.failed)}")
+    for p, why in report.failed:
+        print(f"    ✗ {p}: {why}")
+
+    if tier == "purge":
+        uninstaller.print_removal_hint(report.install_method or "unknown")
+
+    if report.failed:
+        sys.exit(1)
+
+
 def cmd_install(args: list):
     """Handle `marmalade-tts install <engine>...`.
 
@@ -506,6 +653,9 @@ def main():
         return
     if argv and argv[0] == "install":
         cmd_install(argv[1:])
+        return
+    if argv and argv[0] == "uninstall":
+        cmd_uninstall(argv[1:])
         return
     if argv and argv[0] == "mcp":
         from . import mcp_server

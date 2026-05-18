@@ -11,10 +11,11 @@ from .engines.emojivoice import VOICES as EMOJIVOICE_VOICES
 ENGINES = ["kitten", "kokoro", "piper", "coqui", "pocket", "matcha", "emojivoice"]
 # Bare names first (primary), canonical IDs after (long form, also accepted).
 KOKORO_VOICES = list(_KOKORO_ALIASES.keys()) + list(_KOKORO_ALIASES.values())
-SUBCOMMANDS = ["config", "daemon", "init", "install"]
+SUBCOMMANDS = ["config", "daemon", "init", "install", "uninstall"]
 CONFIG_ACTIONS = ["show", "get", "set"]
 DAEMON_ACTIONS = ["start", "stop", "status", "start-all", "stop-all"]
 INSTALL_FLAGS = ["--allow-sudo", "--reinstall", "--skip-selftest"]
+UNINSTALL_FLAGS = ["--engines", "--purge", "--dry-run", "-y", "--yes"]
 CONFIG_PATHS = [
     "defaults.engine", "defaults.device", "defaults.speed", "defaults.play",
     "defaults.preprocessing",
@@ -67,6 +68,7 @@ def bash_completion() -> str:
     config_actions = " ".join(CONFIG_ACTIONS)
     daemon_actions = " ".join(DAEMON_ACTIONS)
     install_flags = " ".join(INSTALL_FLAGS)
+    uninstall_flags = " ".join(UNINSTALL_FLAGS)
     config_paths = " ".join(CONFIG_PATHS)
     effect_names = " ".join(EFFECT_NAMES)
 
@@ -87,6 +89,7 @@ _marmalade_tts() {{
     local config_actions="{config_actions}"
     local daemon_actions="{daemon_actions}"
     local install_flags="{install_flags}"
+    local uninstall_flags="{uninstall_flags}"
     local config_paths="{config_paths}"
     local effect_names="{effect_names}"
     local flags="--out --out-dir --srt --vtt --play --no-play --speed --voice --lang --speaker \\
@@ -126,6 +129,12 @@ _marmalade_tts() {{
     # Install subcommand — engine names (repeatable) and install flags
     if [[ "${{words[1]}}" == "install" ]]; then
         COMPREPLY=( $(compgen -W "$engines $install_flags" -- "$cur") )
+        return
+    fi
+
+    # Uninstall subcommand — optional single engine + tier/safety flags
+    if [[ "${{words[1]}}" == "uninstall" ]]; then
+        COMPREPLY=( $(compgen -W "$engines $uninstall_flags" -- "$cur") )
         return
     fi
 
@@ -221,7 +230,7 @@ _marmalade-tts() {{
     local curcontext="$curcontext" state line
     local -a engines=({engines})
     local -a aliases=({aliases})
-    local -a subcommands=(config daemon init install)
+    local -a subcommands=(config daemon init install uninstall)
     local -a kitten_voices=({kitten_voices})
     local -a kokoro_voices=({kokoro_voices})
     local -a pocket_voices=({pocket_voices})
