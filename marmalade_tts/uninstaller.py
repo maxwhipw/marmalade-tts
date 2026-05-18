@@ -26,6 +26,7 @@ refusing rather than risking unwanted removal:
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 import subprocess
@@ -113,11 +114,14 @@ def print_removal_hint(method: str) -> None:
 
 # ── Safety ──────────────────────────────────────────────────────────────────
 
-def _safe_paths() -> set[str]:
+@functools.lru_cache(maxsize=1)
+def _safe_paths() -> frozenset[str]:
     """All paths the uninstaller is ever allowed to touch.
 
     Anything not in this set is refused at runtime — the user can never
-    supply a path, but defense in depth catches future bugs.
+    supply a path, but defense in depth catches future bugs. Cached for the
+    process lifetime; tests that monkeypatch INSTALL_RECIPES / BASE_DIR /
+    CONFIG_DIR etc. must call ``_safe_paths.cache_clear()`` after the patch.
     """
     paths: set[str] = set()
     for recipe in INSTALL_RECIPES.values():
@@ -135,7 +139,7 @@ def _safe_paths() -> set[str]:
     for eng in INSTALL_RECIPES:
         for suffix in (".sock", ".pid", ".log"):
             paths.add(os.path.expanduser(f"{BASE_DIR}/{eng}{suffix}"))
-    return paths
+    return frozenset(paths)
 
 
 def _is_under_managed_root(path: str) -> bool:
@@ -148,8 +152,11 @@ def _is_under_managed_root(path: str) -> bool:
     if not (abs_p.startswith(home + "/.local")
             or abs_p.startswith(home + "/.config")):
         return False
-    # /home/user/.local/share/x → 5 components when split on '/'
-    # We want ≥ 4 components below root (i.e. ≥ home + 3 dirs deep).
+    # /home/user/.config/marmalade-tts splits to 5 elements counting the
+    # empty leading element from the leading '/'. Threshold of 5 means the
+    # path must sit at least two directories below home — qualifies
+    # ~/.config/marmalade-tts and ~/.local/share/x; rejects ~/.local,
+    # ~/.config, and $HOME itself.
     return len(abs_p.rstrip("/").split(os.sep)) >= 5
 
 
@@ -177,6 +184,9 @@ def _check_marker(path: str) -> tuple[bool, str]:
         # Idempotent: a post-cleanup empty shell is safe to remove.
         return True, ""
     marker_path = os.path.join(path, marker)
+    if os.path.islink(marker_path):
+        # A symlinked marker could point anywhere — refuse rather than trust it.
+        return False, f"marker file {marker!r} in {path} is a symlink (refused)"
     if os.path.exists(marker_path):
         return True, ""
     return False, f"missing marker file {marker!r} in {path}"
@@ -396,7 +406,11 @@ def purge(*, dry_run: bool) -> Report:
     ):
         _safe_remove(path, dry_run=dry_run, report=report)
 
-    report.install_method = detect_install_method()
+    # Skip detection on dry-run — it forks dpkg/rpm/pacman subprocesses, and
+    # dry-run promises no side effects. The hint isn't printed on dry-run
+    # anyway (cmd_uninstall returns before print_removal_hint).
+    if not dry_run:
+        report.install_method = detect_install_method()
     return report
 
 
@@ -429,12 +443,15 @@ def print_plan(paths: list[str], header: str) -> None:
         return
     total = 0
     for p in paths:
-        exists = os.path.lexists(p)
-        if exists:
+        if not os.path.lexists(p):
+            note = "(already gone)"
+        elif os.path.islink(p):
+            # Symlinks get refused at delete time, so don't count their size
+            # against the reclaimable total — that number would mislead.
+            note = "(symlink — will be REFUSED)"
+        else:
             size = _path_size(p)
             total += size
-            note = "(symlink — will be REFUSED)" if os.path.islink(p) else f"~ {_fmt_size(size)}"
-        else:
-            note = "(already gone)"
+            note = f"~ {_fmt_size(size)}"
         print(f"  - {p}  {note}")
     print(f"  Total reclaimable: ~ {_fmt_size(total)}")

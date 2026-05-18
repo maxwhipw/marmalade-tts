@@ -27,6 +27,17 @@ from marmalade_tts.uninstaller import (
 )
 
 
+# ── Autouse: clear the _safe_paths lru_cache around every test ──────────────
+# Stale cache from a relocated-fixture test would otherwise contaminate the
+# next test's view of the whitelist.
+
+@pytest.fixture(autouse=True)
+def _clear_safe_paths_cache():
+    uninstaller._safe_paths.cache_clear()
+    yield
+    uninstaller._safe_paths.cache_clear()
+
+
 # ── Fixture: redirect EVERY managed path under tmp_path ─────────────────────
 
 @pytest.fixture
@@ -394,3 +405,43 @@ class TestDetectInstallMethod:
              patch("marmalade_tts.uninstaller.os.path.isdir",
                    side_effect=lambda p: p == lib_dir):
             assert detect_install_method() == "manual"
+
+
+# ── cmd_uninstall CLI plumbing ──────────────────────────────────────────────
+# Lightweight tests for the CLI-layer behaviors the deeper safety tests don't
+# touch: EOF on the prompt aborts, --dry-run wins over -y.
+
+class TestCmdUninstall:
+    def test_eof_on_prompt_aborts(self, capsys):
+        """User hitting Ctrl-D / EOF at the y/N prompt must abort, not proceed."""
+        from marmalade_tts.cli import cmd_uninstall
+
+        with patch("marmalade_tts.init._is_tty", return_value=True), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value={}), \
+             patch("builtins.input", side_effect=EOFError), \
+             patch("marmalade_tts.uninstaller.uninstall_engine") as mock_uninstall, \
+             patch("marmalade_tts.uninstaller.print_plan"):
+            cmd_uninstall(["kitten"])
+        out = capsys.readouterr().out
+        assert "aborted" in out.lower()
+        mock_uninstall.assert_not_called()
+
+    def test_dry_run_overrides_yes(self, capsys):
+        """--dry-run must win over -y: no actual delete call is made even
+        though -y would normally skip the prompt."""
+        from marmalade_tts.cli import cmd_uninstall
+
+        with patch("marmalade_tts.init._is_tty", return_value=True), \
+             patch("marmalade_tts.cli.cfg_mod.load", return_value={}), \
+             patch("marmalade_tts.uninstaller.uninstall_engine") as mock_uninstall, \
+             patch("marmalade_tts.uninstaller.uninstall_all_engines") as mock_all, \
+             patch("marmalade_tts.uninstaller.purge") as mock_purge, \
+             patch("marmalade_tts.uninstaller.print_plan"):
+            cmd_uninstall(["kitten", "--dry-run", "-y"])
+        out = capsys.readouterr().out
+        assert "--dry-run: no files were touched." in out
+        # None of the destructive paths called — the dry-run branch returns
+        # before the execute block, regardless of -y.
+        mock_uninstall.assert_not_called()
+        mock_all.assert_not_called()
+        mock_purge.assert_not_called()
