@@ -38,6 +38,13 @@ The engine class must:
 - Import `Engine` from the parent package: `from . import Engine`
 - Extend `Engine` (not just define a standalone class)
 - Set `name = "{name}"` as a class attribute
+- Set `MAX_CHARS` — soft character limit per synthesis call (`None` =
+  engine handles arbitrary lengths). Inputs longer than this are split
+  on sentence boundaries by `synth.synthesize_one` and the resulting
+  WAVs concatenated; see `marmalade_tts/chunking.py`. Conservative
+  default is `500`; bump it to `1000`+ if your engine handles long text
+  gracefully (piper does). Users can override via
+  `engines.<name>.max_chars` in config.
 - Implement `synthesize(text, out_path, **kwargs)`
 - Implement (or inherit) `list_voices()`
 
@@ -55,6 +62,7 @@ class MyEngine(Engine):
     """MyEngine — short description."""
 
     name = "myengine"
+    MAX_CHARS = 500  # chunk inputs longer than this; None to disable
 
     def __init__(self, cfg: dict):
         self.voice = cfg.get("voice", "voice_one")

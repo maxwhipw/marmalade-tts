@@ -856,6 +856,13 @@ engines:
     max_chars: null   # disable chunking entirely (piper handles long text)
 ```
 
+Chunks are joined byte-for-byte at sentence boundaries, so on a very
+long input you may notice a brief seam at each join. If you have a
+single uninterrupted take that can't tolerate seams, set the engine's
+`max_chars: null` to disable chunking and let the engine handle the
+full length — usually fine on piper, your-mileage-may-vary on the
+smaller neural engines.
+
 Chunking is **not** batch — there's still one output WAV per user input.
 Use `--batch` if you want line-by-line splitting instead.
 

@@ -917,7 +917,7 @@ class TestInstallSubcommand:
             main()  # no SystemExit
 
 
-# ── Batch mode (implicit on multi-line input) ────────────────────────────────
+# ── Batch mode (opt-in via --batch) ──────────────────────────────────────────
 
 class _BatchHarness:
     """Patches engine + tempfile/playback for batch tests. Each call to

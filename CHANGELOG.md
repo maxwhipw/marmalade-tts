@@ -5,25 +5,28 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-- **Batch synthesis is now opt-in via `--batch`.** Multi-line input
-  (`@file.txt`, `--stdin`, `--text "a\nb"`) previously triggered batch
-  mode implicitly — one WAV per non-empty line. That surprised AI
-  agents sending paragraph-broken files. Default now: multi-line input
-  goes to a single synthesis call (newlines and all). Pass `--batch`
-  for the old one-WAV-per-line behavior.
-- **matcha / emojivoice cold path now calls Matcha-TTS's Python API
-  directly** instead of shelling out to the upstream `matcha-tts` CLI.
-  The CLI is research-codebase residue from ICASSP 2024 — it always
-  writes a `.png` mel-spectrogram alongside each `.wav` and has no flag
-  to disable that. Two new one-shot scripts (`daemon/matcha-oneshot.py`,
-  `daemon/emojivoice-oneshot.py`) share a `daemon/_matcha_synth.py`
-  helper with the long-running daemons, so warm and cold paths now go
-  through the same code. No PNGs leak anywhere. `matcha-tts` is pinned
-  in the installer (`>=0.0.7,<0.1`) since the Python API surface is less
-  stable than the CLI's.
+## [0.5.0] — 2026-05-19
+
+Major release. Hands-off engine installer, two new expressive engines
+(matcha + emojivoice), an MCP server, voice aliases, streaming batch
+playback, subtitle output, transparent chunking for long inputs, and a
+substantial preprocessing upgrade (markdown / html / emoji / custom
+pronunciation dictionary).
 
 ### Added
+- **`matcha` and `emojivoice` engines.** Matcha-TTS is a fast
+  flow-matching neural TTS; EmojiVoice runs on Matcha-TTS and lets an
+  emoji in the text select the emotional speaking style (`🤣` amused,
+  `😭` sad, `😡` angry, …). Both have daemon + systemd support.
+- **Hands-off engine installer.** `marmalade-tts init` now *installs* the
+  engines you select — venvs, packages, system dependencies, and models —
+  instead of just printing hints. A new `marmalade-tts install <engine>…`
+  command does the same for post-init additions (`init` uses it under the
+  hood). Each engine is self-tested after install: marmalade-tts
+  synthesizes a phrase through the real CLI code path and asserts a valid
+  WAV. Flags: `--allow-sudo`, `--reinstall`, `--skip-selftest`.
+- **`marmalade_tts/models.json`** — model manifest with redundant download
+  sources and sha256 verification, consumed by the installer.
 - **Transparent chunking for long inputs.** Each engine declares a
   soft `MAX_CHARS` limit (500 for most, 1000 for piper); inputs longer
   than that are split on sentence boundaries, synthesized per chunk,
@@ -53,6 +56,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   reserved — an alias that collides is ignored with a warning. Alias
   names complete in bash/zsh alongside engine names; `--list-aliases`
   enumerates what's configured.
+- **Batch synthesis via `--batch`.** Opt into per-line batching with the
+  new `--batch` flag — each non-empty line becomes its own WAV, played
+  in sequence (streaming, see below) or written via `--out-dir DIR` /
+  `--out 'pattern-%03d.wav'`. `--json` returns an array of result
+  objects in batch (one per utterance); single-line input keeps the
+  single-object shape. **Multi-line input without `--batch` goes to a
+  single synthesize call** (newlines and all) — that's the default.
+  Long inputs are still split internally via the chunking machinery
+  above; `--batch` is for "each line is its own thing" workflows like
+  chapter narration.
 - **Streaming batch playback.** Multi-line batch playback no longer
   waits for the whole script to render before playing the first line. A
   producer thread renders utterances sequentially while the main thread
@@ -103,15 +116,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   Propagates through both the daemon (warm) and one-shot (cold) paths.
   Unset → engine venv's own default applies, so existing configs are
   unaffected.
-- **Batch synthesis (universal).** Multi-line text input — from `@file.txt`,
-  `--stdin`, or `--text "a\nb"` — now produces one WAV per non-empty line.
-  Plays each through the speakers in sequence, or writes them via the new
-  `--out-dir DIR` flag or a `--out PATTERN` with a printf format
-  (`'chapter-%03d.wav'`). `--json` returns an array of result objects in
-  batch (one per utterance); single-line input keeps the original
-  single-object shape. The trigger is **implicit** on multi-line input —
-  a deliberate UX tradeoff documented in agent memory; revisit if it
-  surprises users.
 - **`emoji` preprocessing rule.** Strips emojis before synthesis for every
   engine except `emojivoice`. Without this, espeak-backed engines (kokoro,
   piper, matcha, …) verbalize them as their Unicode names — `😭` becomes
@@ -121,31 +125,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   emojivoice). The emoji rule is intentionally **omitted** from
   `emojivoice`'s default profile so the emotion emoji survives
   preprocessing and reaches the engine.
-
-### Fixed
-- matcha / emojivoice subprocess invocations now run with `cwd` set to
-  their per-call tempdir, so the spectrogram `.png` that matcha-tts writes
-  alongside each `.wav` lands in the tempdir we clean up — not the user's
-  current directory. (Was leaking `utterance_NNN.png` files into cwd.)
-
-## [0.5.0] — 2026-05-14
-
-Hands-off engine installation, and two new expressive engines.
-
-### Added
-- **`matcha` and `emojivoice` engines.** Matcha-TTS is a fast
-  flow-matching neural TTS; EmojiVoice runs on Matcha-TTS and lets an
-  emoji in the text select the emotional speaking style (`🤣` amused,
-  `😭` sad, `😡` angry, …). Both have daemon + systemd support.
-- **Hands-off engine installer.** `marmalade-tts init` now *installs* the
-  engines you select — venvs, packages, system dependencies, and models —
-  instead of just printing hints. A new `marmalade-tts install <engine>…`
-  command does the same for post-init additions (`init` uses it under the
-  hood). Each engine is self-tested after install: marmalade-tts
-  synthesizes a phrase through the real CLI code path and asserts a valid
-  WAV. Flags: `--allow-sudo`, `--reinstall`, `--skip-selftest`.
-- **`marmalade_tts/models.json`** — model manifest with redundant download
-  sources and sha256 verification, consumed by the installer.
 
 ### Changed
 - **uv is now a hard dependency.** The installer uses it to provision
@@ -157,6 +136,16 @@ Hands-off engine installation, and two new expressive engines.
   now call into their own venv explicitly — uniform, and the installer's
   self-test exercises the exact path the CLI uses. The kokoro/piper/coqui
   venvs moved off the old `~/.local/share/pipx/venvs/...` locations.
+- **matcha / emojivoice cold path now calls Matcha-TTS's Python API
+  directly** instead of shelling out to the upstream `matcha-tts` CLI.
+  The CLI is research-codebase residue from ICASSP 2024 — it always
+  writes a `.png` mel-spectrogram alongside each `.wav` and has no flag
+  to disable that. Two new one-shot scripts (`daemon/matcha-oneshot.py`,
+  `daemon/emojivoice-oneshot.py`) share a `daemon/_matcha_synth.py`
+  helper with the long-running daemons, so warm and cold paths now go
+  through the same code. No PNGs leak anywhere. `matcha-tts` is pinned
+  in the installer (`>=0.0.7,<0.1`) since the Python API surface is less
+  stable than the CLI's.
 - **Tab completion is now engine-aware for voices everywhere it can be.**
   - bash: `piper --voice <TAB>` now completes `.onnx` file paths instead
     of nothing.
@@ -168,6 +157,12 @@ Hands-off engine installation, and two new expressive engines.
   - the `install` subcommand and its flags are completed too.
   - coqui voices (`tts_models/...` specs) remain uncompletable by design —
     enumerating them requires loading the whole coqui stack.
+
+### Fixed
+- matcha / emojivoice subprocess invocations now run with `cwd` set to
+  their per-call tempdir, so the spectrogram `.png` that matcha-tts writes
+  alongside each `.wav` lands in the tempdir we clean up — not the user's
+  current directory. (Was leaking `utterance_NNN.png` files into cwd.)
 
 ## [0.4.4] — 2026-05-13
 
