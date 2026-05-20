@@ -9,6 +9,12 @@ Supports multiple engines with a single consistent interface — daemon mode for
 fast synthesis, per-engine text preprocessing, and optional audio effects via
 [sox](https://sox.sourceforge.net/).
 
+**Related projects:**
+[marmalade-tts-android](https://github.com/maxwhipw/marmalade-tts-android) —
+native Android TTS app (in development).
+[marmalade-android](https://github.com/maxwhipw/marmalade-android) —
+OpenClaw AI assistant client (shares the mascot).
+
 ## Hear it
 
 A short demo and a few effect samples (download and play with `paplay`,
