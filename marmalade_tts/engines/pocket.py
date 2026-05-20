@@ -47,6 +47,7 @@ class PocketEngine(Engine):
     """Pocket TTS engine for marmalade-tts."""
 
     name = "pocket"
+    MAX_CHARS = 500
 
     def __init__(self, cfg: dict):
         self.voice = cfg.get("voice", "alba")

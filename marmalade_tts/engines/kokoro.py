@@ -107,6 +107,7 @@ def is_voice_token(token: str) -> bool:
 
 class KokoroEngine(Engine):
     name = "kokoro"
+    MAX_CHARS = 500
 
     def __init__(self, cfg: dict):
         self.cfg = cfg

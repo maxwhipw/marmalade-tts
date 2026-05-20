@@ -6,6 +6,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **Batch synthesis is now opt-in via `--batch`.** Multi-line input
+  (`@file.txt`, `--stdin`, `--text "a\nb"`) previously triggered batch
+  mode implicitly — one WAV per non-empty line. That surprised AI
+  agents sending paragraph-broken files. Default now: multi-line input
+  goes to a single synthesis call (newlines and all). Pass `--batch`
+  for the old one-WAV-per-line behavior.
 - **matcha / emojivoice cold path now calls Matcha-TTS's Python API
   directly** instead of shelling out to the upstream `matcha-tts` CLI.
   The CLI is research-codebase residue from ICASSP 2024 — it always
@@ -18,6 +24,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   stable than the CLI's.
 
 ### Added
+- **Transparent chunking for long inputs.** Each engine declares a
+  soft `MAX_CHARS` limit (500 for most, 1000 for piper); inputs longer
+  than that are split on sentence boundaries, synthesized per chunk,
+  and concatenated into a single WAV before effects and duration are
+  measured. One input still produces one WAV — chunking is purely an
+  implementation detail. Tunable per-engine via
+  `engines.<name>.max_chars` in config (`null` disables).
 - **MCP server.** New `marmalade-tts mcp` subcommand runs a stdio Model
   Context Protocol server with three tools: `synthesize`, `list_voices`,
   and `find_voice`. `find_voice` takes a free-text description ("warm

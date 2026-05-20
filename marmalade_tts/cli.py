@@ -532,7 +532,7 @@ Examples:
   marmalade-tts daemon start
   marmalade-tts init                             # set up + install engines
   marmalade-tts install matcha emojivoice        # add engines after init
-  marmalade-tts @chapters.txt --out-dir ./out/   # batch: one WAV per line
+  marmalade-tts @chapters.txt --batch --out-dir ./out/  # one WAV per line
   eval "$(marmalade-tts --completion bash)"
 """,
     )
@@ -540,19 +540,24 @@ Examples:
                         help="TTS engine (uses defaults.engine if omitted)")
     parser.add_argument("--text", "-t", default=None,
                         help="Text to synthesize (alternative to positional)")
+    parser.add_argument("--batch", action="store_true",
+                        help="Treat each non-empty input line as a separate "
+                             "utterance and produce one WAV per line. Without "
+                             "this flag the whole input (line breaks and all) "
+                             "goes to a single synthesis call. Long inputs are "
+                             "still chunked internally and recombined into one "
+                             "WAV per input — see Chunking in the README.")
     parser.add_argument("--out", metavar="FILE",
                         help="Save WAV to file (default: play immediately). "
-                             "In batch mode (multi-line input), pass a printf "
-                             "pattern like 'chapter-%%03d.wav' to get one file "
-                             "per line.")
+                             "With --batch, pass a printf pattern like "
+                             "'chapter-%%03d.wav' to get one file per line.")
     parser.add_argument("--out-dir", metavar="DIR", default=None,
                         help="Write output WAVs into DIR. Files are auto-named "
-                             "(001.wav, 002.wav, …). Useful for batch mode "
-                             "(multi-line input).")
+                             "(001.wav, 002.wav, …). Useful with --batch.")
     parser.add_argument("--srt", metavar="FILE", default=None,
                         help="Write a SubRip (.srt) subtitle file synchronized "
                              "to the generated audio. One cue per utterance; "
-                             "works for both single and batch (multi-line) input.")
+                             "works for both single-utterance and --batch runs.")
     parser.add_argument("--vtt", metavar="FILE", default=None,
                         help="Write a WebVTT (.vtt) subtitle file synchronized "
                              "to the generated audio. Same shape as --srt; pass "
@@ -782,10 +787,16 @@ def main():
         sys.exit("[marmalade-tts] No text to synthesize")
 
     # ── Split into utterances ──
-    # Multi-line input → batch mode (one WAV per non-empty line). DELIBERATE
-    # implicit trigger — see memory project_batch_synthesis.
-    nonempty_lines = [ln for ln in text.splitlines() if ln.strip()]
-    utterances = nonempty_lines if len(nonempty_lines) > 1 else [text]
+    # Batch mode is now opt-in via --batch: each non-empty line becomes a
+    # separate WAV. Without --batch, the entire input goes to a single
+    # synthesis call. Inputs longer than the engine's MAX_CHARS are still
+    # split transparently inside synth.synthesize_one and re-concatenated;
+    # that's chunking, not batch — see chunking.py.
+    if args.batch:
+        nonempty_lines = [ln for ln in text.splitlines() if ln.strip()]
+        utterances = nonempty_lines if nonempty_lines else [text]
+    else:
+        utterances = [text]
     is_batch = len(utterances) > 1
 
     # ── Resolve voice ──

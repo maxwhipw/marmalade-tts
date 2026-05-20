@@ -22,6 +22,7 @@ VOICES = ["Bella", "Jasper", "Luna", "Bruno", "Rosie", "Hugo", "Kiki", "Leo"]
 
 class KittenEngine(Engine):
     name = "kitten"
+    MAX_CHARS = 500  # conservative — kitten's small CPU model degrades on long inputs
 
     def __init__(self, cfg: dict):
         self.cfg = cfg

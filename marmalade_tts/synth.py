@@ -114,7 +114,39 @@ def synthesize_one(
         return None
 
     # ── Synthesis + effects ──
-    engine.synthesize(processed, out_path, **synth_kwargs)
+    # Transparent chunking: if the preprocessed text exceeds the engine's
+    # MAX_CHARS limit (or the engines.<name>.max_chars config override),
+    # split on sentence boundaries, synthesize each chunk into a temp WAV,
+    # and concatenate the result into out_path. The user-visible contract
+    # is one input → one WAV; chunking is implementation detail.
+    from . import chunking
+    max_chars = chunking.resolve_max_chars(engine, eng_cfg)
+    if max_chars is not None and len(processed) > max_chars:
+        chunks = chunking.chunk_text(processed, max_chars)
+    else:
+        chunks = None
+
+    if not chunks or len(chunks) == 1:
+        engine.synthesize(processed, out_path, **synth_kwargs)
+    else:
+        import os as _os
+        import tempfile as _tempfile
+        tmp_paths: list[str] = []
+        try:
+            for i, piece in enumerate(chunks):
+                fd, p = _tempfile.mkstemp(
+                    prefix=f"marmalade-chunk-{i:03d}-", suffix=".wav")
+                _os.close(fd)
+                tmp_paths.append(p)
+                engine.synthesize(piece, p, **synth_kwargs)
+            chunking.concat_wavs(tmp_paths, out_path)
+        finally:
+            for p in tmp_paths:
+                try:
+                    _os.unlink(p)
+                except OSError:
+                    pass
+
     cli_helpers.apply_effects_if_any(out_path, effect_list, config)
 
     # ── Duration (AFTER effects — sox tempo/speed/fade change length). ──

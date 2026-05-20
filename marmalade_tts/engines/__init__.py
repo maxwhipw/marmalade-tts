@@ -12,6 +12,13 @@ class Engine:
 
     name: str = ""
 
+    # Soft character limit for a single ``synthesize`` call. When a user
+    # input exceeds this, the CLI splits on sentence boundaries, calls
+    # synthesize per chunk, and concatenates the resulting WAVs — the user
+    # still sees one WAV out for one input in. ``None`` = engine handles
+    # arbitrary lengths gracefully, don't chunk. Override per engine.
+    MAX_CHARS: "int | None" = None
+
     def synthesize(self, text: str, out_path: str, **kwargs):
         """Synthesize text to a WAV file. Subclasses must implement."""
         raise NotImplementedError

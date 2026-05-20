@@ -31,6 +31,7 @@ COQUI_BIN = os.path.join(COQUI_VENV, "bin", "tts")
 
 class CoquiEngine(Engine):
     name = "coqui"
+    MAX_CHARS = 500  # varies by model; conservative default
 
     def __init__(self, cfg: dict):
         self.cfg = cfg

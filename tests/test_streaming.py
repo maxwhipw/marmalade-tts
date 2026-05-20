@@ -112,7 +112,7 @@ class TestStreamingOverlap:
         this from being flaky on a slow CI."""
         t0 = time.monotonic()
         play_log, _ = _run_main(
-            ["marmalade-tts", "kokoro", "--text", "alpha\nbeta\ngamma"],
+            ["marmalade-tts", "kokoro", "--batch", "--text", "alpha\nbeta\ngamma"],
             _cfg(), tmp_path, synth_delay=0.05, play_delay=0.10,
         )
         elapsed = time.monotonic() - t0
@@ -125,7 +125,7 @@ class TestStreamingOverlap:
         """Even though synthesis happens on a background thread, playback
         consumes the queue in FIFO order, which is input order."""
         play_log, _ = _run_main(
-            ["marmalade-tts", "kokoro", "--text", "alpha\nbeta\ngamma"],
+            ["marmalade-tts", "kokoro", "--batch", "--text", "alpha\nbeta\ngamma"],
             _cfg(), tmp_path, synth_delay=0.01, play_delay=0.01,
         )
         # We don't know the exact tmp filenames, but we do know the order
@@ -142,7 +142,7 @@ class TestStreamingSubtitles:
         srt_path = tmp_path / "out.srt"
         _run_main(
             ["marmalade-tts", "kokoro",
-             "--text", "alpha\nbeta\ngamma",
+             "--batch", "--text", "alpha\nbeta\ngamma",
              "--srt", str(srt_path)],
             _cfg(), tmp_path, synth_delay=0.01, play_delay=0.01,
         )
@@ -182,7 +182,7 @@ class TestStreamingErrorPropagation:
         with pytest.raises(RuntimeError, match="boom on line 2"):
             _run_main(
                 ["marmalade-tts", "kokoro",
-                 "--text", "alpha\nbeta\ngamma",
+                 "--batch", "--text", "alpha\nbeta\ngamma",
                  "--srt", str(srt_path)],
                 _cfg(), tmp_path,
                 synth_side_effect=fake_synth, play_delay=0.01,
@@ -221,7 +221,7 @@ class TestStreamingErrorPropagation:
         make_tmp = _tmp_wav_factory(tmp_path)
 
         with patch("sys.argv",
-                   ["marmalade-tts", "kokoro", "--text", "alpha\nbeta\ngamma"]), \
+                   ["marmalade-tts", "kokoro", "--batch", "--text", "alpha\nbeta\ngamma"]), \
              patch("marmalade_tts.cli.cfg_mod.load", return_value=_cfg()), \
              patch("marmalade_tts.cli.make_tmp_wav", side_effect=make_tmp), \
              patch("marmalade_tts.cli.play_wav", side_effect=fake_play), \
@@ -285,7 +285,7 @@ class TestNoPlayPathUnchanged:
 
         with patch("sys.argv",
                    ["marmalade-tts", "kokoro",
-                    "--text", "alpha\nbeta\ngamma",
+                    "--batch", "--text", "alpha\nbeta\ngamma",
                     "--no-play", "--out-dir", str(out_dir)]), \
              patch("marmalade_tts.cli.cfg_mod.load", return_value=_cfg()), \
              patch("marmalade_tts.cli.play_wav") as pw, \

@@ -91,6 +91,7 @@ def parse_emoji(text: str, voice: str):
 
 class EmojiVoiceEngine(Engine):
     name = "emojivoice"
+    MAX_CHARS = 500  # emojis are load-bearing — chunking may split emotion context
 
     def __init__(self, cfg: dict):
         self.cfg = cfg

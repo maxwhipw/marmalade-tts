@@ -800,30 +800,36 @@ marmalade-tts @script.txt --out script.wav
 
 ## Batch synthesis
 
-Multi-line text input — from `@file.txt`, `--stdin`, or `--text "a\nb"` —
-automatically becomes a **batch**: one WAV per non-empty line, played in
-sequence (or written via `--out PATTERN` / `--out-dir DIR`).
+By default, a multi-line input (from `@file.txt`, `--stdin`, or
+`--text "a\nb"`) goes to a **single** synthesis call — the line breaks
+are part of the text, and you get one WAV out. Long inputs are split
+internally on sentence boundaries and recombined transparently — see
+[Chunking](#chunking-long-inputs) below.
+
+Pass **`--batch`** to opt into per-line splitting: one WAV per non-empty
+line, played in sequence (or written via `--out PATTERN` / `--out-dir`).
 
 ```sh
-# Narrate chapters.txt line-by-line, playing each through the speakers
+# Single WAV — the default. Newlines stay in the text.
 marmalade-tts kokoro @chapters.txt
 
+# Narrate chapters.txt line-by-line — opt in with --batch
+marmalade-tts kokoro --batch @chapters.txt
+
 # Write one WAV per line into ./out/ (auto-named 001.wav, 002.wav, …)
-marmalade-tts kokoro @chapters.txt --out-dir ./out/
+marmalade-tts kokoro --batch @chapters.txt --out-dir ./out/
 
 # Use a printf pattern instead — chapter-001.wav, chapter-002.wav, …
-marmalade-tts kokoro @chapters.txt --out 'chapter-%03d.wav'
+marmalade-tts kokoro --batch @chapters.txt --out 'chapter-%03d.wav'
 
 # JSON output is an array in batch (one object per utterance)
-marmalade-tts kokoro @chapters.txt --no-play --json --out-dir ./out/
-
-# Single-line input still produces one WAV — same as always
-marmalade-tts kokoro "Hello world"
+marmalade-tts kokoro --batch @chapters.txt --no-play --json --out-dir ./out/
 ```
 
-Blank lines are skipped. The trigger is **implicit** (any multi-line input
-batches) — if you want a multi-line passage read as a single utterance,
-pre-join the lines on your end or pass it as a single argument.
+Blank lines are skipped in batch mode. **The trigger is explicit** — the
+old behavior (multi-line input implicitly batches) surprised AI agents
+sending paragraph-broken files, so you now have to ask for batch with
+the flag.
 
 **Playback is streaming.** When a batch is being played, line N starts
 playing as soon as it has finished rendering, while line N+1 is still
@@ -832,6 +838,26 @@ immediately and the rest stream behind it — big UX win for audiobook
 and long-form workflows. Playback order always matches input order;
 subtitle (`--srt` / `--vtt`) and `--json` output still describe the
 full batch once every line is done.
+
+### Chunking (long inputs)
+
+When a single input exceeds the engine's character limit, marmalade-tts
+splits it on sentence boundaries, synthesizes each chunk, and
+concatenates the WAVs into a single output — the user-facing contract
+is always "one input → one WAV". Limits are conservative defaults; if
+you've got an engine that handles long text well (piper does), bump it:
+
+```yaml
+# ~/.config/marmalade-tts/config.yaml
+engines:
+  kokoro:
+    max_chars: 800    # raise the chunking threshold
+  piper:
+    max_chars: null   # disable chunking entirely (piper handles long text)
+```
+
+Chunking is **not** batch — there's still one output WAV per user input.
+Use `--batch` if you want line-by-line splitting instead.
 
 ### Subtitles (SRT / WebVTT)
 

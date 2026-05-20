@@ -19,6 +19,7 @@ PIPER_BIN = os.path.join(PIPER_VENV, "bin", "piper")
 
 class PiperEngine(Engine):
     name = "piper"
+    MAX_CHARS = 1000  # piper handles long text gracefully; chunk on very long inputs
 
     def __init__(self, cfg: dict):
         self.cfg = cfg

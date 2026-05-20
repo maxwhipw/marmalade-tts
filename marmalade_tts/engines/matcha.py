@@ -38,6 +38,7 @@ def _is_checkpoint_path(model: str) -> bool:
 
 class MatchaEngine(Engine):
     name = "matcha"
+    MAX_CHARS = 500
 
     def __init__(self, cfg: dict):
         self.cfg = cfg
