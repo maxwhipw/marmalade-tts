@@ -13,7 +13,7 @@ fast synthesis, per-engine text preprocessing, and optional audio effects via
 [marmalade-tts-android](https://github.com/maxwhipw/marmalade-tts-android) —
 native Android TTS app (in development).
 [marmalade-android](https://github.com/maxwhipw/marmalade-android) —
-OpenClaw AI assistant client (shares the mascot).
+OpenClaw AI assistant client (shares the mascot; public release coming soon).
 
 ## Hear it
 
