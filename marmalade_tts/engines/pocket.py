@@ -24,6 +24,27 @@ from . import Engine, sox_tempo
 
 VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
+# Smart-punctuation → ASCII, applied before pocket-tts tokenizes. The bundled
+# SentencePiece vocab has only a straight apostrophe piece (U+0027) — no curly
+# apostrophe and no contraction pieces — and pocket's NFKC normalization does
+# not fold curly quotes. So a curly apostrophe (e.g. from a copy-paste) in a
+# contraction like "that's" byte-falls-back and the model renders the OOV bytes
+# as a stumble/pause. Folding to ASCII first makes contractions tokenize via the
+# real `'` piece. Mirrors the Android engine's normalizeSmartPunctuation().
+_SMART_PUNCT = {
+    "‘": "'", "’": "'", "‚": "'", "‛": "'", "′": "'", "ʼ": "'",
+    "“": '"', "”": '"', "„": '"', "‟": '"', "″": '"',
+    "–": "-", "—": "-", "‒": "-", "―": "-",
+    " ": " ", " ": " ", " ": " ",
+    "…": ".",
+}
+_SMART_PUNCT_TABLE = {ord(k): v for k, v in _SMART_PUNCT.items()}
+
+
+def normalize_smart_punctuation(text: str) -> str:
+    """Fold curly quotes/apostrophes, dashes, NBSPs and ellipsis to ASCII."""
+    return text.translate(_SMART_PUNCT_TABLE)
+
 POCKET_VENV = os.path.expanduser("~/.local/share/pocket-tts-venv")
 POCKET_PYTHON = os.path.join(POCKET_VENV, "bin", "python")
 
@@ -60,6 +81,11 @@ class PocketEngine(Engine):
                 f"[pocket] pocket-tts venv not found at {POCKET_VENV}\n"
                 f"  Run: marmalade-tts install pocket"
             )
+        # Fold smart punctuation to ASCII before pocket-tts tokenizes — see
+        # normalize_smart_punctuation for why (curly apostrophes break
+        # contractions). Android parity (P-AG).
+        text = normalize_smart_punctuation(text)
+
         # Built-in voice names pass through unchanged; ~ in a cloning path
         # (.wav / .safetensors) is expanded.
         v = os.path.expanduser(voice or self.voice)
