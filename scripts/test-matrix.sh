@@ -16,17 +16,20 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 MARKERS="${MTTS_MARKERS:-not smoke}"
 IMAGES=("$@")
 if [ ${#IMAGES[@]} -eq 0 ]; then
-    IMAGES=(debian:12 ubuntu:22.04 ubuntu:24.04 fedora:40)
+    IMAGES=(debian:12 ubuntu:22.04 ubuntu:24.04 fedora:40 archlinux:latest)
 fi
 
+# Arch (rolling) covers Manjaro/EndeavourOS; its `python` bundles venv.
 apt_setup='apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv >/dev/null'
 dnf_setup='dnf install -y -q python3 python3-pip >/dev/null'
+pacman_setup='pacman -Sy --noconfirm python python-pip >/dev/null 2>&1'
 
 run_one() {
     local image="$1" setup
     case "$image" in
         *debian*|*ubuntu*) setup="$apt_setup" ;;
         *fedora*)          setup="$dnf_setup" ;;
+        *arch*)            setup="$pacman_setup" ;;
         *) echo "‼ no setup recipe for $image" >&2; return 2 ;;
     esac
     echo "═══ $image ═══"

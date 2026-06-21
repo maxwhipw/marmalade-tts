@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [debian:12, ubuntu:22.04, ubuntu:24.04, fedora:40]
+        image: [debian:12, ubuntu:22.04, ubuntu:24.04, fedora:40, archlinux:latest]
     steps:
       - uses: actions/checkout@v4
       - name: Run non-engine suite in ${{ matrix.image }}
