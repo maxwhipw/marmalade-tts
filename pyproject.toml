@@ -30,6 +30,8 @@ classifiers = [
 # Optional MCP (Model Context Protocol) server so AI agents can drive
 # marmalade-tts directly. Install with: pip install marmalade-tts[mcp]
 mcp = ["mcp>=1.0"]
+# Test tooling (the non-engine suite: `pytest -m "not smoke"`).
+dev = ["pytest>=7"]
 
 [project.scripts]
 marmalade-tts = "marmalade_tts.cli:main"

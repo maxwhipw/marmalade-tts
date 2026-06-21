@@ -1,0 +1,52 @@
+# CI — cross-distro install + non-engine test matrix, plus a wheel-install smoke.
+#
+# GitHub-hosted ubuntu-latest runners have Docker preinstalled, so the matrix
+# jobs shell out to `docker run` (via scripts/test-matrix.sh) — the same script
+# you can run locally, so CI and your box stay in sync. The publish.yml workflow
+# handles releases (build → PyPI → .deb/.rpm); this runs on every push/PR.
+#
+# `smoke`-marked tests need installed engine binaries (kokoro/piper/coqui/…) and
+# are excluded here — the fast suite (`-m "not smoke"`) is self-contained.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [debian:12, ubuntu:22.04, ubuntu:24.04, fedora:40]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run non-engine suite in ${{ matrix.image }}
+        run: bash scripts/test-matrix.sh ${{ matrix.image }}
+
+  # Build the wheel and verify it installs + the CLI runs in a clean container.
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheel
+        run: |
+          docker run --rm -v "$PWD":/src:ro debian:12 bash -c '
+            apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv >/dev/null
+            python3 -m venv /venv
+            /venv/bin/pip install -q --upgrade pip build
+            cd /tmp && /venv/bin/python -m build --wheel /src --outdir /tmp/dist
+            ls -la /tmp/dist
+          '
+      - name: Install wheel + smoke the CLI in a fresh container
+        run: |
+          docker run --rm -v "$PWD":/src:ro debian:12 bash -c '
+            apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv >/dev/null
+            python3 -m venv /venv && /venv/bin/pip install -q --upgrade pip build
+            /venv/bin/python -m build --wheel /src --outdir /tmp/dist >/dev/null
+            /venv/bin/pip install -q /tmp/dist/*.whl
+            /venv/bin/marmalade-tts --version
+            /venv/bin/marmalade-tts --help >/dev/null
+          '
