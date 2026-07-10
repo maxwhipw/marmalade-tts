@@ -400,6 +400,7 @@ def selftest(engine_name: str, text: str):
     import wave
 
     from .cli import ENGINE_CLASSES
+    from .engines import EngineError
 
     tmp = os.path.join(tempfile.gettempdir(),
                        f"marmalade-selftest-{engine_name}-{os.getpid()}.wav")
@@ -415,7 +416,11 @@ def selftest(engine_name: str, text: str):
         if frames <= 0:
             return False, "WAV has no audio frames"
         return True, f"{frames} frames, {os.path.getsize(tmp)} bytes"
+    except EngineError as e:
+        return False, f"engine error: {e}"
     except SystemExit as e:
+        # Kept for defence in depth — engine.synthesize now raises EngineError
+        # rather than sys.exit, but other install-path code may still exit.
         return False, f"engine exited: {e}"
     except Exception as e:  # noqa: BLE001 — any failure is a failed self-test
         return False, f"{type(e).__name__}: {e}"

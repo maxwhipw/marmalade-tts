@@ -26,10 +26,8 @@ Install:  marmalade-tts install emojivoice
 """
 
 import os
-import subprocess
-import sys
 
-from . import Engine
+from . import Engine, EngineError, run_in_venv
 from .. import daemon as dmgr
 
 EMOJIVOICE_VENV = os.path.expanduser("~/.local/share/emojivoice-venv")
@@ -106,8 +104,8 @@ class EmojiVoiceEngine(Engine):
     def _checkpoint(self, voice: str) -> str:
         fname = CHECKPOINTS.get(voice)
         if not fname:
-            sys.exit(f"[emojivoice] unknown speaker {voice!r}. "
-                     f"Available: {', '.join(VOICES)}")
+            raise EngineError(f"[emojivoice] unknown speaker {voice!r}. "
+                              f"Available: {', '.join(VOICES)}")
         return os.path.join(MODELS_DIR, fname)
 
     def synthesize(self, text: str, out_path: str, voice: str = None,
@@ -119,7 +117,7 @@ class EmojiVoiceEngine(Engine):
         # Matcha-TTS (via espeak) chokes on parentheses — strip them.
         clean_text = clean_text.replace("(", "").replace(")", "")
         if not clean_text.strip():
-            sys.exit("[emojivoice] nothing to speak after removing emoji(s)")
+            raise EngineError("[emojivoice] nothing to speak after removing emoji(s)")
         # marmalade `speed` is a rate multiplier (1.4 = faster); Matcha's
         # length scale runs the other way (higher = slower), so invert an
         # explicit --speed. With no override, use EmojiVoice's expressive
@@ -138,26 +136,26 @@ class EmojiVoiceEngine(Engine):
 
         # ── One-shot subprocess fallback ──
         if not os.path.exists(VENV_PYTHON):
-            sys.exit(
+            raise EngineError(
                 f"[emojivoice] venv not found at {EMOJIVOICE_VENV}\n"
                 f"  Run: marmalade-tts install emojivoice"
             )
         ckpt = self._checkpoint(v)
         if not os.path.exists(ckpt):
-            sys.exit(
+            raise EngineError(
                 f"[emojivoice] speaker checkpoint not found:\n  {ckpt}\n"
                 f"  Run: marmalade-tts install emojivoice"
             )
         script = dmgr._find_daemon_script(ONESHOT_SCRIPT)
         if not os.path.exists(script):
-            sys.exit(
+            raise EngineError(
                 f"[emojivoice] one-shot script not found: {script}\n"
                 f"  Reinstall: bash install.sh"
             )
 
-        env = os.environ.copy()
+        env_extra = {}
         if self.device == "cpu":
-            env["CUDA_VISIBLE_DEVICES"] = ""
+            env_extra["CUDA_VISIBLE_DEVICES"] = ""
 
         cmd = [
             VENV_PYTHON, script,
@@ -172,10 +170,7 @@ class EmojiVoiceEngine(Engine):
         if self.temperature is not None:
             cmd += ["--temperature", str(float(self.temperature))]
 
-        proc = subprocess.run(cmd, capture_output=True, env=env)
-        if proc.returncode != 0:
-            sys.exit(f"[emojivoice] synthesis failed:\n"
-                     f"{proc.stderr.decode(errors='replace')}")
+        run_in_venv(VENV_PYTHON, cmd, env_extra=env_extra, engine_name="emojivoice")
 
     def list_voices(self):
         print("EmojiVoice speakers:")

@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 from unittest.mock import patch, MagicMock
 
-from marmalade_tts.engines import Engine
+from marmalade_tts.engines import Engine, EngineError
 
 
 # ── Engine class structure ────────────────────────────────────────────────────
@@ -88,8 +88,8 @@ class TestPocketSynthesize:
         from marmalade_tts.engines.pocket import PocketEngine, POCKET_PYTHON
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
-        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc) as mock_run:
+        with patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             PocketEngine({"voice": "alba", "device": "cpu"}).synthesize("Hello world", out_path)
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
@@ -102,8 +102,8 @@ class TestPocketSynthesize:
         from marmalade_tts.engines.pocket import PocketEngine
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
-        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc) as mock_run:
+        with patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             PocketEngine({"voice": "alba", "device": "cpu"}).synthesize(
                 "Hello", out_path, voice="marius")
         cmd = mock_run.call_args[0][0]
@@ -113,24 +113,24 @@ class TestPocketSynthesize:
         from marmalade_tts.engines.pocket import PocketEngine
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
-        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc) as mock_run:
+        with patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             PocketEngine({"voice": "fantine", "device": "cpu"}).synthesize("Hello", out_path)
         cmd = mock_run.call_args[0][0]
         assert "fantine" in cmd
 
     def test_missing_venv_exits(self, tmp_path):
         from marmalade_tts.engines.pocket import PocketEngine
-        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=False):
-            with pytest.raises(SystemExit):
+        with patch("marmalade_tts.engines.os.path.exists", return_value=False):
+            with pytest.raises(EngineError):
                 PocketEngine({"device": "cpu"}).synthesize("Hi", str(tmp_path / "o.wav"))
 
     def test_failed_subprocess_exits(self, tmp_path):
         from marmalade_tts.engines.pocket import PocketEngine
         fake_proc = MagicMock(returncode=1, stderr=b"boom")
-        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc):
-            with pytest.raises(SystemExit):
+        with patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc):
+            with pytest.raises(EngineError):
                 PocketEngine({"device": "cpu"}).synthesize("Hi", str(tmp_path / "o.wav"))
 
 
@@ -141,8 +141,8 @@ class TestPocketSpeed:
     def test_speed_1_does_not_call_sox(self, tmp_path):
         from marmalade_tts.engines.pocket import PocketEngine
         fake_proc = MagicMock(returncode=0, stderr=b"")
-        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc), \
+        with patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc), \
              patch("marmalade_tts.engines.pocket.sox_tempo") as mock_sox:
             PocketEngine({}).synthesize("Hi", str(tmp_path / "o.wav"), speed=1.0)
         # Pocket's contract: speed=1.0 is a no-op, sox_tempo handles it but
@@ -155,8 +155,8 @@ class TestPocketSpeed:
         from marmalade_tts.engines.pocket import PocketEngine
         out_path = str(tmp_path / "o.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
-        with patch("marmalade_tts.engines.pocket.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.pocket.subprocess.run", return_value=fake_proc), \
+        with patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc), \
              patch("marmalade_tts.engines.pocket.sox_tempo") as mock_sox:
             PocketEngine({}).synthesize("Hi", out_path, speed=1.5)
         mock_sox.assert_called_once_with(out_path, 1.5)

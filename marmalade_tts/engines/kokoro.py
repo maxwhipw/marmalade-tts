@@ -19,10 +19,8 @@ language is configured, that's what we use. Override order:
 """
 
 import os
-import subprocess
-import sys
 
-from . import Engine
+from . import Engine, run_in_venv
 from .. import daemon as dmgr
 
 # marmalade-tts owns the install: kokoro lives in its own venv and is
@@ -143,16 +141,9 @@ class KokoroEngine(Engine):
             return
 
         # Subprocess fallback
-        if not os.path.exists(KOKORO_BIN):
-            sys.exit(
-                f"[kokoro] kokoro venv not found at {KOKORO_VENV}\n"
-                f"  Run: marmalade-tts install kokoro"
-            )
-
-        env = os.environ.copy()
+        env_extra = {"HF_HUB_OFFLINE": "1"}
         if self.device == "cpu":
-            env["CUDA_VISIBLE_DEVICES"] = ""
-        env["HF_HUB_OFFLINE"] = "1"
+            env_extra["CUDA_VISIBLE_DEVICES"] = ""
 
         cmd = [KOKORO_BIN, "--voice", v, "--output-file", out_path, "--text", text]
         if la:
@@ -160,9 +151,7 @@ class KokoroEngine(Engine):
         if speed and speed != 1.0:
             cmd += ["--speed", str(speed)]
 
-        proc = subprocess.run(cmd, capture_output=True, env=env)
-        if proc.returncode != 0:
-            sys.exit(f"[kokoro] synthesis failed:\n{proc.stderr.decode(errors='replace')}")
+        run_in_venv(KOKORO_BIN, cmd, env_extra=env_extra, engine_name="kokoro")
 
     def list_voices(self):
         print("Kokoro voices (use the bare name, e.g. \"george\"):\n")

@@ -16,10 +16,8 @@ Install:  marmalade-tts install matcha
 """
 
 import os
-import subprocess
-import sys
 
-from . import Engine
+from . import Engine, EngineError, run_in_venv
 from .. import daemon as dmgr
 
 MATCHA_VENV = os.path.expanduser("~/.local/share/matcha-tts-venv")
@@ -76,21 +74,21 @@ class MatchaEngine(Engine):
 
         # ── One-shot subprocess fallback ──
         if not os.path.exists(VENV_PYTHON):
-            sys.exit(
+            raise EngineError(
                 f"[matcha] matcha-tts venv not found at {MATCHA_VENV}\n"
                 f"  Run: marmalade-tts install matcha"
             )
 
         script = dmgr._find_daemon_script(ONESHOT_SCRIPT)
         if not os.path.exists(script):
-            sys.exit(
+            raise EngineError(
                 f"[matcha] one-shot script not found: {script}\n"
                 f"  Reinstall: bash install.sh"
             )
 
-        env = os.environ.copy()
+        env_extra = {}
         if self.device == "cpu":
-            env["CUDA_VISIBLE_DEVICES"] = ""
+            env_extra["CUDA_VISIBLE_DEVICES"] = ""
 
         # marmalade `speed` is a rate multiplier (1.4 = faster). Matcha's
         # length scale runs the other way (higher = slower), so invert.
@@ -112,10 +110,7 @@ class MatchaEngine(Engine):
         if self.temperature is not None:
             cmd += ["--temperature", str(float(self.temperature))]
 
-        proc = subprocess.run(cmd, capture_output=True, env=env)
-        if proc.returncode != 0:
-            sys.exit(f"[matcha] synthesis failed:\n"
-                     f"{proc.stderr.decode(errors='replace')}")
+        run_in_venv(VENV_PYTHON, cmd, env_extra=env_extra, engine_name="matcha")
 
     def list_voices(self):
         print("Matcha-TTS models (auto-download on first use):")

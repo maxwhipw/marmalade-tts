@@ -20,9 +20,8 @@ CLI is invoked by explicit path, never via $PATH.
 
 import os
 import subprocess
-import sys
 
-from . import Engine
+from . import Engine, run_in_venv
 from .. import daemon as dmgr
 
 COQUI_VENV = os.path.expanduser("~/.local/share/coqui-venv")
@@ -77,15 +76,9 @@ class CoquiEngine(Engine):
             return
 
         # ── Subprocess fallback ──
-        if not os.path.exists(COQUI_BIN):
-            sys.exit(
-                f"[coqui] coqui venv not found at {COQUI_VENV}\n"
-                f"  Run: marmalade-tts install coqui"
-            )
-
-        env = os.environ.copy()
+        env_extra = {}
         if self.device == "cpu":
-            env["CUDA_VISIBLE_DEVICES"] = ""
+            env_extra["CUDA_VISIBLE_DEVICES"] = ""
 
         cmd = [COQUI_BIN, "--model_name", model, "--text", text,
                "--out_path", out_path]
@@ -108,9 +101,7 @@ class CoquiEngine(Engine):
         # (it's a per-model concept). For emotion-aware models, prefer
         # daemon mode where we route to the Python API.
 
-        proc = subprocess.run(cmd, capture_output=True, env=env)
-        if proc.returncode != 0:
-            sys.exit(f"[coqui] synthesis failed:\n{proc.stderr.decode(errors='replace')}")
+        run_in_venv(COQUI_BIN, cmd, env_extra=env_extra, engine_name="coqui")
 
     def list_voices(self):
         if os.path.exists(COQUI_BIN):

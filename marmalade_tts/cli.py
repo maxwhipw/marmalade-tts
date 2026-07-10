@@ -20,6 +20,7 @@ from . import daemon
 from . import preprocessing as pp
 from .playback import play_wav, make_tmp_wav, wav_duration
 from .completion import bash_completion, zsh_completion
+from .engines import EngineError
 from .engines.kitten import KittenEngine, VOICES as KITTEN_VOICES
 from .engines.kokoro import KokoroEngine, is_voice_token as kokoro_is_voice_token
 from .engines.piper import PiperEngine
@@ -637,6 +638,18 @@ Examples:
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
+    """Console entry point. Turns a recoverable ``EngineError`` (missing
+    venv, engine subprocess failure) into a clean ``stderr`` message + exit 1,
+    so the CLI's user-visible behavior is unchanged from when engines called
+    ``sys.exit`` directly."""
+    try:
+        _run()
+    except EngineError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+
+def _run():
     argv = sys.argv[1:]
 
     # ── Quick intercepts (only when explicitly given as the first argument,

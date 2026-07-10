@@ -11,11 +11,46 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import pytest
+from unittest.mock import patch
+
+from marmalade_tts.engines import EngineError
 from marmalade_tts.mcp_server import (
     VOICE_DESCRIPTIONS,
     find_voice_matches,
     list_voices_data,
+    synthesize_text,
 )
+
+
+# ── synthesis failure contract ───────────────────────────────────────────────
+# A failed synthesis (missing venv, engine subprocess error) must surface as
+# an EngineError from synthesize_text, which the MCP `synthesize` tool catches
+# and returns as an error result — it must NEVER take down the server process.
+
+class TestSynthesisFailureContract:
+    def test_engine_error_propagates_from_synthesize_text(self):
+        # synthesize_one raising EngineError bubbles up (not SystemExit, which
+        # would kill the stdio server).
+        with patch("marmalade_tts.synth.synthesize_one",
+                   side_effect=EngineError("[pocket] venv not found")):
+            with pytest.raises(EngineError):
+                synthesize_text("hello", engine="pocket")
+
+    def test_tool_wrapper_returns_error_result_not_exit(self):
+        # Mirror the MCP `synthesize` tool's try/except: an EngineError from
+        # synthesize_text becomes {"error": ...}, keeping the server alive.
+        def _tool(text):
+            try:
+                return synthesize_text(text, engine="pocket")
+            except EngineError as e:
+                return {"error": str(e)}
+
+        with patch("marmalade_tts.synth.synthesize_one",
+                   side_effect=EngineError("[pocket] synthesis failed:\nboom")):
+            result = _tool("hello")
+        assert "error" in result
+        assert "boom" in result["error"]
 
 
 # ── list_voices_data ────────────────────────────────────────────────────────

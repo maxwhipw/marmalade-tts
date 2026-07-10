@@ -1,10 +1,8 @@
 """Kitten TTS engine — daemon client with subprocess fallback."""
 
 import os
-import subprocess
-import sys
 
-from . import Engine
+from . import Engine, run_in_venv
 from .. import daemon as dmgr
 
 KITTEN_VENV   = os.path.expanduser("~/.local/share/kittentts-venv")
@@ -43,22 +41,15 @@ class KittenEngine(Engine):
             return
 
         # Fallback: direct subprocess (slow cold start)
-        if not os.path.exists(KITTEN_PYTHON):
-            sys.exit(f"[marmalade-tts] kittentts venv not found at {KITTEN_VENV}")
-
-        env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = ""
-        env["HF_HUB_OFFLINE"] = "1"
-
         cmd = [
             KITTEN_PYTHON, "-c",
             f"from kittentts import KittenTTS; "
             f"m = KittenTTS('{self._repo()}'); "
             f"m.generate_to_file({text!r}, {out_path!r}, voice={v!r}, speed={speed})",
         ]
-        proc = subprocess.run(cmd, capture_output=True, env=env)
-        if proc.returncode != 0:
-            sys.exit(f"[kitten] synthesis failed:\n{proc.stderr.decode(errors='replace')}")
+        run_in_venv(KITTEN_PYTHON, cmd,
+                    env_extra={"CUDA_VISIBLE_DEVICES": "", "HF_HUB_OFFLINE": "1"},
+                    engine_name="kitten")
 
     def list_voices(self):
         print(f"Kitten TTS voices: {', '.join(VOICES)}")

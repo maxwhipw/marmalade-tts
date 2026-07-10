@@ -5,9 +5,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import pytest
 from unittest.mock import patch, MagicMock
 
-from marmalade_tts.engines import Engine
+from marmalade_tts.engines import Engine, EngineError
 
 
 class TestPiperStructure:
@@ -29,10 +30,13 @@ class TestPiperStructure:
 
 
 def _mock_subprocess():
+    # The venv check + run now live in the shared engines.run_in_venv helper,
+    # so patch there. (Piper's _find_model still uses piper.os, but these
+    # tests always pass an explicit model, so that path isn't hit.)
     fake_proc = MagicMock(returncode=0, stderr=b"")
-    exists_patch = patch("marmalade_tts.engines.piper.os.path.exists",
+    exists_patch = patch("marmalade_tts.engines.os.path.exists",
                          return_value=True)
-    run_patch = patch("marmalade_tts.engines.piper.subprocess.run",
+    run_patch = patch("marmalade_tts.engines.subprocess.run",
                       return_value=fake_proc)
     return exists_patch, run_patch
 
@@ -62,6 +66,16 @@ class TestPiperVoiceOverride:
                 model="/explicit.onnx")
         cmd = mock_run.call_args[0][0]
         assert cmd[cmd.index("--model") + 1] == "/explicit.onnx"
+
+
+class TestPiperMissingVenv:
+    def test_missing_venv_raises_engine_error(self, tmp_path):
+        from marmalade_tts.engines.piper import PiperEngine
+        # venv binary absent → EngineError with an install hint, not sys.exit.
+        with patch("marmalade_tts.engines.os.path.exists", return_value=False):
+            with pytest.raises(EngineError):
+                PiperEngine({"model": "/m.onnx"}).synthesize(
+                    "Hi", str(tmp_path / "o.wav"))
 
 
 class TestPiperNoiseKnobsSubprocess:

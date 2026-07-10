@@ -17,10 +17,8 @@ Install:
 """
 
 import os
-import subprocess
-import sys
 
-from . import Engine, sox_tempo
+from . import Engine, run_in_venv, sox_tempo
 
 VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
@@ -76,11 +74,6 @@ class PocketEngine(Engine):
 
     def synthesize(self, text: str, out_path: str, voice: str = None,
                    speed: float = 1.0, **kwargs):
-        if not os.path.exists(POCKET_PYTHON):
-            sys.exit(
-                f"[pocket] pocket-tts venv not found at {POCKET_VENV}\n"
-                f"  Run: marmalade-tts install pocket"
-            )
         # Fold smart punctuation to ASCII before pocket-tts tokenizes — see
         # normalize_smart_punctuation for why (curly apostrophes break
         # contractions). Android parity (P-AG).
@@ -90,13 +83,10 @@ class PocketEngine(Engine):
         # (.wav / .safetensors) is expanded.
         v = os.path.expanduser(voice or self.voice)
 
-        env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = ""
-
         cmd = [POCKET_PYTHON, "-c", _SYNTH_SCRIPT, text, out_path, v]
-        proc = subprocess.run(cmd, capture_output=True, env=env)
-        if proc.returncode != 0:
-            sys.exit(f"[pocket] synthesis failed:\n{proc.stderr.decode(errors='replace')}")
+        run_in_venv(POCKET_PYTHON, cmd,
+                    env_extra={"CUDA_VISIBLE_DEVICES": ""},
+                    engine_name="pocket")
 
         # Pocket-TTS has no native speed knob — honor --speed via sox.
         # See ENGINE-GUIDE.md "Honoring --speed".

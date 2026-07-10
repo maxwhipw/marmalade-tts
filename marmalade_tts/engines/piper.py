@@ -1,10 +1,8 @@
 """Piper TTS engine — daemon client with subprocess fallback."""
 
 import os
-import subprocess
-import sys
 
-from . import Engine
+from . import Engine, EngineError, run_in_venv
 from .. import daemon as dmgr
 
 PIPER_VOICES_DIR = os.path.expanduser("~/.local/share/piper/voices")
@@ -64,15 +62,9 @@ class PiperEngine(Engine):
             return
 
         # Subprocess fallback
-        if not os.path.exists(PIPER_BIN):
-            sys.exit(
-                f"[piper] piper venv not found at {PIPER_VENV}\n"
-                f"  Run: marmalade-tts install piper"
-            )
-
         m = model or self._find_model()
         if not m:
-            sys.exit(
+            raise EngineError(
                 "[piper] No model found. Download one:\n"
                 "  mkdir -p ~/.local/share/piper/voices && cd ~/.local/share/piper/voices\n"
                 "  wget https://huggingface.co/rhasspy/piper-voices/resolve/main/"
@@ -91,9 +83,8 @@ class PiperEngine(Engine):
         if self.noise_w_scale is not None:
             cmd += ["--noise-w-scale", str(float(self.noise_w_scale))]
 
-        proc = subprocess.run(cmd, input=text.encode(), capture_output=True)
-        if proc.returncode != 0:
-            sys.exit(f"[piper] synthesis failed:\n{proc.stderr.decode(errors='replace')}")
+        # Piper reads its text on stdin, not as an argv flag.
+        run_in_venv(PIPER_BIN, cmd, stdin=text.encode(), engine_name="piper")
 
     def list_voices(self):
         print(f"Piper voices dir: {PIPER_VOICES_DIR}")

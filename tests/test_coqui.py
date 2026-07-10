@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 from unittest.mock import patch, MagicMock
 
-from marmalade_tts.engines import Engine
+from marmalade_tts.engines import Engine, EngineError
 
 
 # ── Engine class structure ──────────────────────────────────────────────────
@@ -46,9 +46,9 @@ class TestCoquiEngineStructure:
 def _mock_subprocess():
     """Patch os.path.exists and subprocess.run; return the mock_run object."""
     fake_proc = MagicMock(returncode=0, stderr=b"")
-    exists_patch = patch("marmalade_tts.engines.coqui.os.path.exists",
+    exists_patch = patch("marmalade_tts.engines.os.path.exists",
                          return_value=True)
-    run_patch = patch("marmalade_tts.engines.coqui.subprocess.run",
+    run_patch = patch("marmalade_tts.engines.subprocess.run",
                       return_value=fake_proc)
     return exists_patch, run_patch
 
@@ -160,9 +160,9 @@ class TestCoquiSubprocess:
 
     def test_missing_venv_exits(self, tmp_path):
         from marmalade_tts.engines.coqui import CoquiEngine
-        with patch("marmalade_tts.engines.coqui.os.path.exists",
+        with patch("marmalade_tts.engines.os.path.exists",
                    return_value=False):
-            with pytest.raises(SystemExit):
+            with pytest.raises(EngineError):
                 CoquiEngine({}).synthesize("Hi", str(tmp_path / "o.wav"))
 
 

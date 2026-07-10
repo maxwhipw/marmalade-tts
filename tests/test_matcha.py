@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 from unittest.mock import patch, MagicMock
 
-from marmalade_tts.engines import Engine
+from marmalade_tts.engines import Engine, EngineError
 
 
 # ── Engine class structure ────────────────────────────────────────────────────
@@ -80,7 +80,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             eng = MatchaEngine({"device": "cpu", "model": "matcha_ljspeech"})
             eng.synthesize("Hello world", out_path)
         mock_run.assert_called_once()
@@ -99,7 +100,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             eng = MatchaEngine({"device": "cpu", "model": "/models/custom.ckpt"})
             eng.synthesize("Hi", out_path)
         cmd = mock_run.call_args[0][0]
@@ -114,7 +116,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu"}).synthesize("Hi", out_path, speed=1.5)
         cmd = mock_run.call_args[0][0]
         assert "--length-scale" in cmd
@@ -126,7 +129,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu"}).synthesize("Hello (aside) world", out_path)
         cmd = mock_run.call_args[0][0]
         text_arg = cmd[cmd.index("--text") + 1]
@@ -140,7 +144,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu"}).synthesize("Hi", out_path, speed=1.0)
         cmd = mock_run.call_args[0][0]
         assert "--length-scale" in cmd
@@ -152,7 +157,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu", "model": "matcha_vctk"}).synthesize(
                 "Hi", out_path, speaker="42")
         cmd = mock_run.call_args[0][0]
@@ -164,7 +170,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu"}).synthesize(
                 "Hi", out_path, voice="matcha_vctk")
         cmd = mock_run.call_args[0][0]
@@ -184,7 +191,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu", "steps": 50}).synthesize("Hi", out_path)
         cmd = mock_run.call_args[0][0]
         assert "--steps" in cmd
@@ -195,7 +203,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu", "temperature": 0.5}).synthesize("Hi", out_path)
         cmd = mock_run.call_args[0][0]
         assert "--temperature" in cmd
@@ -208,7 +217,8 @@ class TestMatchaSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             MatchaEngine({"device": "cpu"}).synthesize("Hi", out_path)
         cmd = mock_run.call_args[0][0]
         assert "--steps" not in cmd
@@ -227,7 +237,7 @@ class TestMatchaSynthesize:
     def test_missing_venv_exits(self, tmp_path):
         from marmalade_tts.engines.matcha import MatchaEngine
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=False):
-            with pytest.raises(SystemExit):
+            with pytest.raises(EngineError):
                 MatchaEngine({"device": "cpu"}).synthesize("Hello", str(tmp_path / "o.wav"))
 
     def test_missing_oneshot_script_exits(self, tmp_path):
@@ -235,13 +245,14 @@ class TestMatchaSynthesize:
         from marmalade_tts.engines.matcha import MatchaEngine
         with patch("marmalade_tts.engines.matcha.os.path.exists",
                    side_effect=lambda p: p.endswith("python")):
-            with pytest.raises(SystemExit):
+            with pytest.raises(EngineError):
                 MatchaEngine({"device": "cpu"}).synthesize("Hi", str(tmp_path / "o.wav"))
 
     def test_failed_subprocess_exits(self, tmp_path):
         from marmalade_tts.engines.matcha import MatchaEngine
         fake_proc = MagicMock(returncode=1, stderr=b"boom")
         with patch("marmalade_tts.engines.matcha.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.matcha.subprocess.run", return_value=fake_proc):
-            with pytest.raises(SystemExit):
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc):
+            with pytest.raises(EngineError):
                 MatchaEngine({"device": "cpu"}).synthesize("Hi", str(tmp_path / "o.wav"))

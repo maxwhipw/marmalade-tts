@@ -23,6 +23,7 @@ import re
 
 from . import config as cfg_mod
 from .cli import ENGINE_CLASSES
+from .engines import EngineError
 from .playback import make_tmp_wav
 
 
@@ -294,10 +295,16 @@ def run() -> None:
           speed: Speech-rate multiplier; 1.0 is natural, 1.4 is fast, 0.8 is slow.
           out_path: Where to write the WAV. A temp file is used when omitted.
 
-        Returns: `{"out": path, "engine": name, "voice": resolved-voice}`.
+        Returns: `{"out": path, "engine": name, "voice": resolved-voice}`,
+        or `{"error": "..."}` if synthesis fails (a missing engine venv or a
+        subprocess error). A failed synthesis returns an error result — it
+        must never take down the server process.
         """
-        return synthesize_text(text, engine=engine, voice=voice,
-                               speed=speed, out_path=out_path)
+        try:
+            return synthesize_text(text, engine=engine, voice=voice,
+                                   speed=speed, out_path=out_path)
+        except EngineError as e:
+            return {"error": str(e)}
 
     @mcp.tool()
     def list_voices(engine: str | None = None) -> list[dict]:

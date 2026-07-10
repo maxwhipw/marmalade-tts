@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 from unittest.mock import patch, MagicMock
 
-from marmalade_tts.engines import Engine
+from marmalade_tts.engines import Engine, EngineError
 
 
 # ── Engine class structure ────────────────────────────────────────────────────
@@ -123,7 +123,8 @@ class TestEmojiVoiceSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             EmojiVoiceEngine({"device": "cpu", "voice": "paige"}).synthesize(
                 "Wow 😮", out_path)
         cmd = mock_run.call_args[0][0]
@@ -156,7 +157,8 @@ class TestEmojiVoiceSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             EmojiVoiceEngine({"device": "cpu"}).synthesize("hello", out_path)
         cmd = mock_run.call_args[0][0]
         ls = float(cmd[cmd.index("--length-scale") + 1])
@@ -167,7 +169,8 @@ class TestEmojiVoiceSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             EmojiVoiceEngine({"device": "cpu"}).synthesize("Hello (aside) world", out_path)
         cmd = mock_run.call_args[0][0]
         text_arg = cmd[cmd.index("--text") + 1]
@@ -176,7 +179,7 @@ class TestEmojiVoiceSynthesize:
     def test_missing_venv_exits(self, tmp_path):
         from marmalade_tts.engines.emojivoice import EmojiVoiceEngine
         with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=False):
-            with pytest.raises(SystemExit):
+            with pytest.raises(EngineError):
                 EmojiVoiceEngine({"device": "cpu"}).synthesize(
                     "hi", str(tmp_path / "o.wav"))
 
@@ -185,14 +188,14 @@ class TestEmojiVoiceSynthesize:
         # venv python exists, but the speaker checkpoint does not
         with patch("marmalade_tts.engines.emojivoice.os.path.exists",
                    side_effect=lambda p: p.endswith("python")):
-            with pytest.raises(SystemExit):
+            with pytest.raises(EngineError):
                 EmojiVoiceEngine({"device": "cpu"}).synthesize(
                     "hi", str(tmp_path / "o.wav"))
 
     def test_text_with_only_emoji_exits(self, tmp_path):
         from marmalade_tts.engines.emojivoice import EmojiVoiceEngine
         # "😭" alone → cleaned text is empty → should exit rather than synth nothing
-        with pytest.raises(SystemExit):
+        with pytest.raises(EngineError):
             EmojiVoiceEngine({"device": "cpu", "daemon": True}).synthesize(
                 "😭", str(tmp_path / "o.wav"))
 
@@ -200,8 +203,9 @@ class TestEmojiVoiceSynthesize:
         from marmalade_tts.engines.emojivoice import EmojiVoiceEngine
         fake_proc = MagicMock(returncode=1, stderr=b"boom")
         with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc):
-            with pytest.raises(SystemExit):
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc):
+            with pytest.raises(EngineError):
                 EmojiVoiceEngine({"device": "cpu"}).synthesize(
                     "hi", str(tmp_path / "o.wav"))
 
@@ -210,7 +214,8 @@ class TestEmojiVoiceSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             EmojiVoiceEngine({"device": "cpu", "steps": 50,
                               "temperature": 0.5}).synthesize("hi", out_path)
         cmd = mock_run.call_args[0][0]
@@ -222,7 +227,8 @@ class TestEmojiVoiceSynthesize:
         out_path = str(tmp_path / "out.wav")
         fake_proc = MagicMock(returncode=0, stderr=b"")
         with patch("marmalade_tts.engines.emojivoice.os.path.exists", return_value=True), \
-             patch("marmalade_tts.engines.emojivoice.subprocess.run", return_value=fake_proc) as mock_run:
+             patch("marmalade_tts.engines.os.path.exists", return_value=True), \
+             patch("marmalade_tts.engines.subprocess.run", return_value=fake_proc) as mock_run:
             EmojiVoiceEngine({"device": "cpu"}).synthesize("hi", out_path)
         cmd = mock_run.call_args[0][0]
         assert "--steps" not in cmd
