@@ -101,9 +101,12 @@ def cmd_config(args: list):
     if action == "set" and len(args) >= 3:
         key = args[1]
         value = " ".join(args[2:])
-        cfg_mod.set_path(config, key, value)
-        cfg_mod.save(config)
-        val, _ = cfg_mod.get_path(config, key)
+        # Mutate the raw user file, not the merged view — saving the merge
+        # would pin today's defaults into the file forever.
+        raw = cfg_mod.load_raw()
+        cfg_mod.set_path(raw, key, value)
+        cfg_mod.save(raw)
+        val, _ = cfg_mod.get_path(raw, key)
         print(f"[config] {key} = {val}")
         return
 
@@ -239,7 +242,8 @@ def cmd_init(args: list):
         selected, engines_cfg, default_engine = init_interactive()
 
     # ── Write config ──
-    config = cfg_mod.load()
+    # Raw user file, not the merged view — see cfg_mod.load_raw().
+    config = cfg_mod.load_raw()
     config.setdefault("defaults", {})["engine"] = default_engine
     config.setdefault("defaults", {}).setdefault("speed", 1.0)
     config.setdefault("defaults", {}).setdefault("play", True)
@@ -822,13 +826,13 @@ def _run():
     out_paths, auto_play = resolve_out_paths(args, len(utterances), config, parser)
 
     # ── Speed ──
-    # Precedence: --speed > alias.speed > defaults.speed
+    # Precedence: --speed > alias.speed > engines.<engine>.speed > defaults.speed
     if args.speed is not None:
         speed = args.speed
     elif alias_overrides and alias_overrides.get("speed") is not None:
         speed = alias_overrides["speed"]
     else:
-        speed = config.get("defaults", {}).get("speed", 1.0)
+        speed = eng_cfg.get("speed", config.get("defaults", {}).get("speed", 1.0))
 
     # ── Synth kwargs (the same for every utterance in a batch) ──
     # Each kwarg follows the same null-fallback pattern: explicit CLI flag

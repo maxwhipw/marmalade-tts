@@ -212,7 +212,7 @@ def synthesize_text(
     text: str,
     engine: str | None = None,
     voice: str | None = None,
-    speed: float = 1.0,
+    speed: float | None = None,
     out_path: str | None = None,
 ) -> dict:
     """Render text to a WAV, reusing the CLI's preprocessing + effects flow.
@@ -234,6 +234,11 @@ def synthesize_text(
     eng = ENGINE_CLASSES[engine_name](eng_cfg)
 
     out = out_path or make_tmp_wav()
+
+    # Precedence: explicit `speed` arg > engines.<engine>.speed > defaults.speed
+    # (eng_cfg already carries that fallback chain from config.engine_cfg).
+    if speed is None:
+        speed = eng_cfg.get("speed", config.get("defaults", {}).get("speed", 1.0))
 
     synth_kwargs: dict = {"speed": speed}
     if voice:
@@ -281,7 +286,7 @@ def run() -> None:
         text: str,
         engine: str | None = None,
         voice: str | None = None,
-        speed: float = 1.0,
+        speed: float | None = None,
         out_path: str | None = None,
     ) -> dict:
         """Synthesize `text` to a WAV file.
@@ -293,6 +298,7 @@ def run() -> None:
           voice: Voice name (engine-specific). Use `list_voices` or `find_voice`
                  to discover what's available.
           speed: Speech-rate multiplier; 1.0 is natural, 1.4 is fast, 0.8 is slow.
+                 Uses the configured engine/defaults speed when omitted.
           out_path: Where to write the WAV. A temp file is used when omitted.
 
         Returns: `{"out": path, "engine": name, "voice": resolved-voice}`,

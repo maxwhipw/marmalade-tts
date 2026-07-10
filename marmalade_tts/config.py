@@ -72,21 +72,53 @@ DEFAULT_CONFIG = {
 }
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge ``override`` onto ``base``. ``override`` wins.
+
+    Dicts merge key-by-key; lists and scalars are replaced outright (a user
+    ``effects.defaults.kitten: [...]`` list is not spliced with the default).
+    """
+    merged = dict(base)
+    for key, val in override.items():
+        base_val = merged.get(key)
+        if isinstance(base_val, dict) and isinstance(val, dict):
+            merged[key] = _deep_merge(base_val, val)
+        else:
+            merged[key] = val
+    return merged
+
+
 def load() -> dict:
-    """Load config from disk, falling back to defaults."""
+    """Load config from disk, deep-merged over the defaults.
+
+    A hand-written or partial user config (e.g. missing ``presets:``, or a
+    ``kitten`` engine block that only sets ``voice``) still gets every
+    default key it didn't specify — user values win, defaults fill gaps.
+    """
+    cfg = load_raw()
+    if cfg:
+        return _deep_merge(DEFAULT_CONFIG, cfg)
+    # Deep copy so callers can mutate without polluting the module-level defaults.
+    return copy.deepcopy(DEFAULT_CONFIG)
+
+
+def load_raw() -> dict:
+    """Load the user's config file verbatim — no defaults merged.
+
+    Write paths (``config set``, ``init``) must mutate THIS and save it, not
+    the merged view from ``load()``: saving the merged config would pin
+    today's defaults into the user's file, so future default changes could
+    never reach them.
+    """
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, encoding="utf-8") as f:
-                cfg = yaml.safe_load(f)
+                return yaml.safe_load(f) or {}
         except yaml.YAMLError as e:
             print(f"[marmalade-tts] Warning: could not parse {CONFIG_PATH}: {e}",
                   file=sys.stderr)
             print("[marmalade-tts] Falling back to default config.", file=sys.stderr)
-            cfg = None
-        if cfg:
-            return cfg
-    # Deep copy so callers can mutate without polluting the module-level defaults.
-    return copy.deepcopy(DEFAULT_CONFIG)
+    return {}
 
 
 def save(cfg: dict):

@@ -248,3 +248,71 @@ class TestDefaultConfig:
         for preset in ["fast", "balanced", "quality"]:
             assert "matcha" in cfg["presets"][preset]
             assert "emojivoice" in cfg["presets"][preset]
+
+
+# ── load() deep-merges user config over defaults ────────────────────────────
+
+class TestLoadMergesDefaults:
+    def test_minimal_user_config_gets_presets(self, tmp_path):
+        """A hand-written config missing `presets:` should still get them —
+        otherwise --fast/--balanced/--quality silently no-op."""
+        cfg_path = str(tmp_path / "config.yaml")
+        with open(cfg_path, "w") as f:
+            yaml.safe_dump({"defaults": {"engine": "kitten"}}, f)
+        with patch.object(cfg_mod, "CONFIG_PATH", cfg_path):
+            loaded = cfg_mod.load()
+        assert "presets" in loaded
+        assert "fast" in loaded["presets"]
+        assert loaded["presets"]["fast"]["kitten"] == "nano"
+
+    def test_user_scalar_overrides_default(self, tmp_path):
+        cfg_path = str(tmp_path / "config.yaml")
+        with open(cfg_path, "w") as f:
+            yaml.safe_dump({"defaults": {"engine": "kokoro", "speed": 1.5}}, f)
+        with patch.object(cfg_mod, "CONFIG_PATH", cfg_path):
+            loaded = cfg_mod.load()
+        assert loaded["defaults"]["engine"] == "kokoro"
+        assert loaded["defaults"]["speed"] == 1.5
+        # Untouched default keys still present.
+        assert loaded["defaults"]["play"] is True
+
+    def test_nested_engine_keys_merge(self, tmp_path):
+        """User sets engines.kitten.voice; engines.kitten.model_size default
+        should survive the merge instead of disappearing."""
+        cfg_path = str(tmp_path / "config.yaml")
+        with open(cfg_path, "w") as f:
+            yaml.safe_dump({"engines": {"kitten": {"voice": "Custom"}}}, f)
+        with patch.object(cfg_mod, "CONFIG_PATH", cfg_path):
+            loaded = cfg_mod.load()
+        assert loaded["engines"]["kitten"]["voice"] == "Custom"
+        assert loaded["engines"]["kitten"]["model_size"] == "micro"
+        # Other default engines are still present.
+        assert "kokoro" in loaded["engines"]
+
+    def test_user_list_replaces_default_list(self, tmp_path):
+        """Lists/scalars replace rather than splice — a user's effects list
+        is not merged element-wise with any default list."""
+        cfg_path = str(tmp_path / "config.yaml")
+        with open(cfg_path, "w") as f:
+            yaml.safe_dump({"effects": {"defaults": {"kitten": ["reverb=20"]}}}, f)
+        with patch.object(cfg_mod, "CONFIG_PATH", cfg_path):
+            loaded = cfg_mod.load()
+        assert loaded["effects"]["defaults"]["kitten"] == ["reverb=20"]
+
+
+class TestLoadRaw:
+    """Write paths must round-trip the user's sparse file, not the merged view."""
+
+    def test_load_raw_returns_only_user_keys(self, tmp_path):
+        p = tmp_path / "config.yaml"
+        p.write_text("defaults:\n  engine: kitten\n")
+        with patch.object(cfg_mod, "CONFIG_PATH", str(p)):
+            raw = cfg_mod.load_raw()
+        assert raw == {"defaults": {"engine": "kitten"}}
+        # while load() fills in everything else
+        with patch.object(cfg_mod, "CONFIG_PATH", str(p)):
+            assert "presets" in cfg_mod.load()
+
+    def test_load_raw_missing_file_is_empty(self, tmp_path):
+        with patch.object(cfg_mod, "CONFIG_PATH", str(tmp_path / "nope.yaml")):
+            assert cfg_mod.load_raw() == {}

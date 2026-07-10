@@ -358,6 +358,54 @@ class TestSynthesizeRouting:
         call_kwargs = mock_synth.call_args[1]
         assert call_kwargs.get("speed") == 1.5
 
+    def test_engine_speed_wins_over_defaults_speed(self):
+        """Precedence: --speed > alias.speed > engines.<engine>.speed > defaults.speed.
+        No --speed flag, so the engine's configured speed should win over
+        the (different) global default."""
+        fake_config = {
+            "defaults": {"engine": "kokoro", "speed": 1.0, "play": False, "preprocessing": False},
+            "engines": {"kokoro": {"voice": "af_heart", "lang": "a", "daemon": False,
+                                    "device": "cpu", "speed": 1.3}},
+            "presets": {},
+        }
+        mock_synth = MagicMock()
+        with patch("sys.argv", ["marmalade-tts", "kokoro", "hello"]):
+            with patch("marmalade_tts.cli.cfg_mod.load", return_value=fake_config):
+                with patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"):
+                    with patch("marmalade_tts.cli.play_wav"):
+                        with patch("marmalade_tts.cli.os.unlink"):
+                            with patch("marmalade_tts.cli.os.path.exists", return_value=True):
+                                with patch("marmalade_tts.cli.KokoroEngine") as MockKokoro:
+                                    MockKokoro.return_value.synthesize = mock_synth
+                                    with patch.dict("marmalade_tts.cli.ENGINE_CLASSES",
+                                                    {"kokoro": MockKokoro}):
+                                        main()
+        call_kwargs = mock_synth.call_args[1]
+        assert call_kwargs.get("speed") == 1.3
+
+    def test_speed_flag_beats_engine_speed(self):
+        """--speed still wins even when engines.<engine>.speed is set."""
+        fake_config = {
+            "defaults": {"engine": "kokoro", "speed": 1.0, "play": False, "preprocessing": False},
+            "engines": {"kokoro": {"voice": "af_heart", "lang": "a", "daemon": False,
+                                    "device": "cpu", "speed": 1.3}},
+            "presets": {},
+        }
+        mock_synth = MagicMock()
+        with patch("sys.argv", ["marmalade-tts", "kokoro", "hello", "--speed", "0.8"]):
+            with patch("marmalade_tts.cli.cfg_mod.load", return_value=fake_config):
+                with patch("marmalade_tts.cli.make_tmp_wav", return_value="/tmp/t.wav"):
+                    with patch("marmalade_tts.cli.play_wav"):
+                        with patch("marmalade_tts.cli.os.unlink"):
+                            with patch("marmalade_tts.cli.os.path.exists", return_value=True):
+                                with patch("marmalade_tts.cli.KokoroEngine") as MockKokoro:
+                                    MockKokoro.return_value.synthesize = mock_synth
+                                    with patch.dict("marmalade_tts.cli.ENGINE_CLASSES",
+                                                    {"kokoro": MockKokoro}):
+                                        main()
+        call_kwargs = mock_synth.call_args[1]
+        assert call_kwargs.get("speed") == 0.8
+
     def test_effect_applied_after_synthesis(self):
         from marmalade_tts.engines.kokoro import KokoroEngine
         with patch("marmalade_tts.cli.KokoroEngine") as MockKokoro:
