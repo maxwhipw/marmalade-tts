@@ -3,12 +3,14 @@
 import sys
 import os
 import signal
+import socket
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 from unittest.mock import patch, MagicMock, mock_open
 
 import marmalade_tts.daemon as daemon_mod
+from marmalade_tts.engines import EngineError
 
 
 # ── _paths ────────────────────────────────────────────────────────────────────
@@ -239,7 +241,7 @@ class TestSynthesizeSocket:
         # The real check is os.path.exists(sock_path), not is_running()
         with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
             # tmp_path has no kitten.sock, so synthesize should raise immediately
-            with pytest.raises(RuntimeError, match="not running"):
+            with pytest.raises(EngineError, match="not running"):
                 daemon_mod.synthesize(
                     "kitten",
                     {"text": "hi", "out": "/tmp/x.wav"},
@@ -320,7 +322,7 @@ class TestSynthesizeSocket:
 
         with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
             with patch("socket.socket", return_value=mock_client):
-                with pytest.raises(RuntimeError, match="synthesis failed"):
+                with pytest.raises(EngineError, match="synthesis failed"):
                     daemon_mod.synthesize(
                         "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False
                     )
@@ -341,6 +343,109 @@ class TestSynthesizeSocket:
                     )
 
         mock_client.close.assert_called_once()
+
+    def test_stale_socket_with_autostart_retries_and_succeeds(self, tmp_path):
+        """A socket file that exists but refuses connections (stale — daemon
+        died without cleanup) should be removed, and with auto_start=True a
+        single start()+reconnect retry should succeed."""
+        import json
+
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")  # stale file present
+
+        response_bytes = (json.dumps({"ok": True, "out": "/tmp/x.wav"}) + "\n").encode()
+
+        # First socket() call: connect() raises (stale). Second socket()
+        # call (after restart): connect() succeeds and recv() returns data.
+        stale_client = MagicMock()
+        stale_client.connect.side_effect = ConnectionRefusedError()
+
+        fresh_client = MagicMock()
+        fresh_client.recv.return_value = response_bytes
+
+        def fake_start(engine, timeout=30.0):
+            # Simulate the daemon coming back up and recreating the socket.
+            sock_path.write_text("")
+            return True
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch.object(daemon_mod, "start", side_effect=fake_start) as mock_start:
+                with patch("socket.socket", side_effect=[stale_client, fresh_client]):
+                    result = daemon_mod.synthesize(
+                        "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=True
+                    )
+
+        assert result == "/tmp/x.wav"
+        mock_start.assert_called_once()
+        fresh_client.connect.assert_called_once_with(str(sock_path))
+
+    def test_stale_socket_no_autostart_raises_helpful_error(self, tmp_path):
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")  # stale file present
+
+        stale_client = MagicMock()
+        stale_client.connect.side_effect = ConnectionRefusedError()
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch("socket.socket", return_value=stale_client):
+                with pytest.raises(EngineError, match="daemon start --engine kitten"):
+                    daemon_mod.synthesize(
+                        "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False
+                    )
+
+        # Stale socket file should be cleared even when not retrying.
+        assert not sock_path.exists()
+
+    def test_stale_socket_autostart_fails_raises_helpful_error(self, tmp_path):
+        """Connect fails, and the restart attempt also fails to bring the
+        socket back — should raise a single helpful error, not loop forever."""
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")
+
+        stale_client = MagicMock()
+        stale_client.connect.side_effect = ConnectionRefusedError()
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch.object(daemon_mod, "start", return_value=False):
+                with patch("socket.socket", return_value=stale_client):
+                    with pytest.raises(EngineError, match="failed to start"):
+                        daemon_mod.synthesize(
+                            "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=True
+                        )
+
+    def test_timeout_raises_helpful_error(self, tmp_path):
+        """socket.timeout during recv should raise a message naming the
+        timeout duration and pointing at the daemon log."""
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")
+
+        mock_client = MagicMock()
+        mock_client.recv.side_effect = socket.timeout()
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch("socket.socket", return_value=mock_client):
+                with pytest.raises(EngineError, match="timed out after"):
+                    daemon_mod.synthesize(
+                        "kitten", {"text": "hi", "out": "/tmp/x.wav"},
+                        auto_start=False, timeout=5.0,
+                    )
+
+    def test_empty_response_raises_helpful_error(self, tmp_path):
+        """An immediately-closed connection (recv returns b"") leaves buf
+        empty; json.loads(b"") must be translated into a helpful error
+        naming the daemon log, not a raw JSONDecodeError."""
+        sock_path = tmp_path / "kitten.sock"
+        sock_path.write_text("")
+
+        mock_client = MagicMock()
+        mock_client.recv.return_value = b""  # connection closed with no data
+
+        with patch.object(daemon_mod, "BASE_DIR", str(tmp_path)):
+            with patch("socket.socket", return_value=mock_client):
+                with pytest.raises(EngineError, match="empty or malformed response"):
+                    daemon_mod.synthesize(
+                        "kitten", {"text": "hi", "out": "/tmp/x.wav"}, auto_start=False
+                    )
 
 
 # ── _daemon_env ───────────────────────────────────────────────────────────────

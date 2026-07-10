@@ -75,7 +75,7 @@ class CoquiEngine(Engine):
                 request["speaker_wav"] = speaker_wav_val
             if emotion_val is not None:
                 request["emotion"] = emotion_val
-            dmgr.synthesize("coqui", request, auto_start=True, timeout=120.0)
+            dmgr.synthesize("coqui", request, auto_start=True)
             return
 
         # ── Subprocess fallback ──

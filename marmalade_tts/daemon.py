@@ -295,23 +295,52 @@ def status(engine: str = None) -> dict:
     return result
 
 
-def synthesize(engine: str, request: dict, auto_start: bool = True,
-               timeout: float = 60.0) -> str:
-    """Send a synthesis request to a daemon. Returns output path."""
-    sock_path, _, _, _ = _paths(engine)
+def _daemon_error(msg: str):
+    """Build the error to raise for a daemon-communication failure.
 
-    if not os.path.exists(sock_path):
-        if auto_start:
-            ok = start(engine, timeout=30.0)
-            if not ok:
-                raise RuntimeError(
-                    f"{engine} daemon failed to start.\n"
-                    f"Run: marmalade-tts daemon start --engine {engine}\n"
-                    f"Log: {os.path.join(BASE_DIR, engine + '.log')}"
-                )
-        else:
-            raise RuntimeError(f"{engine} daemon not running.")
+    ``daemon.py`` can't import ``marmalade_tts.engines`` at module level —
+    engines import daemon, so that would be a cycle. The import here is
+    lazy (resolved inside the function body at call time, long after both
+    modules have finished loading), which is cycle-safe. This lets daemon
+    failures surface through the same ``EngineError`` boundary the CLI
+    (``cli.py: main()``) and MCP server already catch, instead of adding a
+    second exception type every caller has to know about.
+    """
+    from .engines import EngineError
+    return EngineError(msg)
 
+
+def _start_failed_error(engine: str):
+    return _daemon_error(
+        f"{engine} daemon failed to start.\n"
+        f"Run: marmalade-tts daemon start --engine {engine}\n"
+        f"Log: {os.path.join(BASE_DIR, engine + '.log')}"
+    )
+
+
+def _timeout_error(engine: str, timeout: float):
+    return _daemon_error(
+        f"{engine} daemon synthesis timed out after {timeout:.0f}s.\n"
+        f"The engine may be too slow for this daemon timeout — check the log.\n"
+        f"Log: {os.path.join(BASE_DIR, engine + '.log')}"
+    )
+
+
+def _bad_response_error(engine: str):
+    return _daemon_error(
+        f"{engine} daemon sent an empty or malformed response.\n"
+        f"Check the log: {os.path.join(BASE_DIR, engine + '.log')}"
+    )
+
+
+def _send_request(sock_path: str, request: dict, timeout: float) -> dict:
+    """Open a socket, send ``request``, and return the parsed JSON response.
+
+    Raises ConnectionRefusedError/FileNotFoundError (stale/absent socket),
+    socket.timeout, or json.JSONDecodeError/ValueError (empty/garbage
+    response) — the caller in ``synthesize`` translates these into helpful
+    errors.
+    """
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.settimeout(timeout)
     try:
@@ -323,10 +352,56 @@ def synthesize(engine: str, request: dict, auto_start: bool = True,
             if not chunk:
                 break
             buf += chunk
-        resp = json.loads(buf.strip())
+        return json.loads(buf.strip())
     finally:
         client.close()
 
+
+def synthesize(engine: str, request: dict, auto_start: bool = True,
+               timeout: float = 120.0) -> str:
+    """Send a synthesis request to a daemon. Returns output path.
+
+    The socket file alone is not a reliable liveness signal — it survives
+    SIGKILL/OOM (daemon/_common.py only unlinks it on clean SIGTERM/SIGINT),
+    so a stale socket looks "present" but refuses connections. Rather than
+    trust ``os.path.exists``, this treats a connect failure as the stale-
+    socket signal: remove the file and, if auto_start, retry once via the
+    normal start() path before giving up.
+    """
+    sock_path, _, _, _ = _paths(engine)
+
+    if not os.path.exists(sock_path):
+        if auto_start:
+            if not start(engine, timeout=30.0):
+                raise _start_failed_error(engine)
+        else:
+            raise _daemon_error(f"{engine} daemon not running.")
+
+    retried = False
+    while True:
+        try:
+            resp = _send_request(sock_path, request, timeout)
+            break
+        except (ConnectionRefusedError, FileNotFoundError):
+            # Stale socket file (process died without cleaning up) or the
+            # file vanished between the exists() check and connect(). Clear
+            # it and, if allowed, try exactly one restart-and-retry.
+            if os.path.exists(sock_path):
+                try:
+                    os.unlink(sock_path)
+                except OSError:
+                    pass
+            if not auto_start or retried:
+                raise _start_failed_error(engine)
+            if not start(engine, timeout=30.0):
+                raise _start_failed_error(engine)
+            retried = True
+            continue
+        except socket.timeout:
+            raise _timeout_error(engine, timeout)
+        except (ValueError, json.JSONDecodeError):
+            raise _bad_response_error(engine)
+
     if not resp.get("ok"):
-        raise RuntimeError(f"Daemon error: {resp.get('error', 'unknown')}")
+        raise _daemon_error(f"Daemon error: {resp.get('error', 'unknown')}")
     return resp["out"]

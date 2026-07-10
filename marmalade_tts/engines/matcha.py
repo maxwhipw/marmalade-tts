@@ -72,7 +72,7 @@ class MatchaEngine(Engine):
                 request["steps"] = int(self.steps)
             if self.temperature is not None:
                 request["temperature"] = float(self.temperature)
-            dmgr.synthesize("matcha", request, auto_start=True, timeout=120.0)
+            dmgr.synthesize("matcha", request, auto_start=True)
             return
 
         # ── One-shot subprocess fallback ──
