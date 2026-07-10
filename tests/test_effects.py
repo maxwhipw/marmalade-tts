@@ -11,7 +11,7 @@ from marmalade_tts.effects import (
     EFFECTS, BUILTIN_PRESETS,
     sox_available, resolve_effect_list, build_sox_args, apply_effects,
     list_effects, _parse_spec, _parse_echo, _parse_bandpass, _parse_chorus,
-    _parse_fade,
+    _parse_fade, _parse_mid, _parse_tremolo, _parse_phaser, _parse_compressor,
 )
 
 
@@ -85,6 +85,67 @@ class TestParsers:
     def test_fade_bad_format(self):
         with pytest.raises(ValueError):
             _parse_fade("just_one")
+
+    def test_mid_default(self):
+        args = _parse_mid(None)
+        assert args == ["equalizer", "1000", "1.0q", "0"]
+
+    def test_mid_custom(self):
+        args = _parse_mid("2500:6")
+        assert args == ["equalizer", "2500", "1.0q", "6"]
+
+    def test_mid_bad_format(self):
+        with pytest.raises(ValueError):
+            _parse_mid("just_one")
+
+    def test_tremolo_default(self):
+        args = _parse_tremolo(None)
+        assert args[0] == "tremolo"
+        assert args == ["tremolo", "5", "40.0"]
+
+    def test_tremolo_custom(self):
+        # depth 0-1 → sox percent
+        args = _parse_tremolo("5:0.5")
+        assert args == ["tremolo", "5", "50.0"]
+
+    def test_tremolo_bad_format(self):
+        with pytest.raises(ValueError):
+            _parse_tremolo("just_one")
+
+    def test_phaser_default(self):
+        args = _parse_phaser(None)
+        assert args[0] == "phaser"
+        assert args == ["phaser", "0.7", "0.7", "3.0", "0.4", "0.5", "-s"]
+
+    def test_phaser_custom(self):
+        # speed:decay mapped into sox arg positions (decay before speed)
+        args = _parse_phaser("0.5:0.4")
+        assert args == ["phaser", "0.7", "0.7", "3.0", "0.4", "0.5", "-s"]
+
+    def test_phaser_bad_format(self):
+        with pytest.raises(ValueError):
+            _parse_phaser("just_one")
+
+    def test_compressor_default(self):
+        args = _parse_compressor(None)
+        assert args[0] == "compand"
+        assert args[1] == "0.005,0.1"
+
+    def test_compressor_custom_transfer_function(self):
+        # threshold=-20, ratio=4 -> out_at_zero = -20 + (0 - -20)/4 = -15
+        args = _parse_compressor("-20:4")
+        assert args == ["compand", "0.005,0.1", "6:-90,-90,-20,-20,0,-15"]
+
+    def test_compressor_ratio_below_one_clamped(self):
+        # ratio < 1 is clamped to 1 (out_at_zero would otherwise exceed 0 dBFS)
+        args = _parse_compressor("-20:0.5")
+        transfer = args[2]
+        # clamped ratio of 1 -> out_at_zero = -20 + (0 - -20)/1 = 0
+        assert transfer == "6:-90,-90,-20,-20,0,0"
+
+    def test_compressor_bad_format(self):
+        with pytest.raises(ValueError):
+            _parse_compressor("just_one")
 
 
 # ── resolve_effect_list ───────────────────────────────────────────────────────
@@ -168,6 +229,22 @@ class TestBuildSoxArgs:
         args = build_sox_args(["pitch"])
         assert args == ["pitch", "100"]
 
+    def test_lowpass_default(self):
+        args = build_sox_args(["lowpass"])
+        assert args == ["lowpass", "3000"]
+
+    def test_lowpass_custom(self):
+        args = build_sox_args(["lowpass=800"])
+        assert args == ["lowpass", "800"]
+
+    def test_highpass_default(self):
+        args = build_sox_args(["highpass"])
+        assert args == ["highpass", "300"]
+
+    def test_highpass_custom(self):
+        args = build_sox_args(["highpass=90"])
+        assert args == ["highpass", "90"]
+
 
 # ── All presets build without error ──────────────────────────────────────────
 
@@ -186,6 +263,26 @@ class TestPresets:
     def test_preset_specs_are_lists(self):
         for name, specs in BUILTIN_PRESETS.items():
             assert isinstance(specs, list), f"Preset {name} specs should be a list"
+
+    def test_new_voice_stackup_presets_present(self):
+        # These curated presets were added alongside the new EQ/dynamics effects.
+        expected = {
+            "broadcaster", "podcast", "trailer", "audiobook", "walkie_talkie",
+            "vintage_radio", "intercom", "underwater", "alien", "ethereal", "dragon",
+        }
+        assert expected.issubset(BUILTIN_PRESETS.keys())
+
+    def test_removed_presets_no_longer_builtin(self):
+        # whisper/slow_deep/fast_high were removed; they should not resolve
+        # as builtin presets anymore. resolve_effect_list passes unknown
+        # names through unchanged, and build_sox_args then rejects them
+        # as unknown effects.
+        for name in ("whisper", "slow_deep", "fast_high"):
+            assert name not in BUILTIN_PRESETS
+            resolved = resolve_effect_list([name], {})
+            assert resolved == [name]
+            with pytest.raises(ValueError, match="Unknown effect"):
+                build_sox_args(resolved)
 
 
 # ── apply_effects ─────────────────────────────────────────────────────────────
