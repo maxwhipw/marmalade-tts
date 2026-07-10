@@ -96,7 +96,7 @@ class TestResolveEffectList:
 
     def test_expands_builtin_preset(self):
         resolved = resolve_effect_list(["robot"], {})
-        # robot = overdrive=20, pitch=-300, reverb=10
+        # robot = overdrive=20, pitch=-100, reverb=10
         assert len(resolved) >= 2
         assert "overdrive=20" in resolved
 

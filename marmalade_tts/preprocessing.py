@@ -126,6 +126,7 @@ def _abbreviation(m: re.Match) -> str:
         "vs.": "versus", "mr.": "mister", "mrs.": "missus", "ms.": "miss",
         "dr.": "doctor", "sr.": "senior", "jr.": "junior",
         "st.": "saint", "ft.": "feet", "lb.": "pounds", "oz.": "ounces",
+        "ex.": "for example",
     }
     lower = text.lower()
     if lower in common:

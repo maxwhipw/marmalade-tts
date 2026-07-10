@@ -59,22 +59,55 @@ EFFECTS = {
                  "Normalize audio to peak level",                           "no parameter needed"),
     "fade":     (lambda p: _parse_fade(p),
                  "Add fade in/out",                                         "in-seconds:out-seconds, e.g. 0.1:0.5"),
+    "lowpass":  (lambda p: ["lowpass", str(p or 3000)],
+                 "Low-pass filter — roll off highs",                        "cutoff Hz (default 3000)"),
+    "highpass": (lambda p: ["highpass", str(p or 300)],
+                 "High-pass filter — roll off lows",                        "cutoff Hz (default 300)"),
+    "mid":      (lambda p: _parse_mid(p),
+                 "Peaking (mid-band) EQ",                                   "freq:gain, e.g. 1000:6"),
+    "tremolo":  (lambda p: _parse_tremolo(p),
+                 "Amplitude tremolo (volume LFO)",                          "speed:depth, e.g. 5:0.5 (depth 0-1)"),
+    "phaser":   (lambda p: _parse_phaser(p),
+                 "Phaser — sweeping notches (sci-fi)",                      "speed:decay, e.g. 0.5:0.4"),
+    "compressor":(lambda p: _parse_compressor(p),
+                 "Downward compressor (tame dynamics)",                     "threshold_dB:ratio, e.g. -20:4"),
 }
 
 
 # ── Built-in presets ──────────────────────────────────────────────────────────
 
 BUILTIN_PRESETS = {
-    "robot":       ["overdrive=20", "pitch=-300", "reverb=10"],
+    "robot":       ["overdrive=20", "pitch=-100", "reverb=10", "vol=0.7"],
     "cave":        ["reverb=80", "echo=0.6:0.6:120:0.3"],
     "chipmunk":    ["pitch=400", "tempo=0.95"],
     "deep":        ["pitch=-400", "bass=6"],
     "telephone":   ["bandpass=300:3400", "overdrive=5", "vol=1.5"],
-    "whisper":     ["vol=0.4", "treble=4", "reverb=20"],
     "stadium":     ["reverb=90", "echo=0.8:0.7:80:0.25"],
-    "megaphone":   ["bandpass=500:4000", "overdrive=30", "vol=2.0"],
-    "slow_deep":   ["pitch=-200", "tempo=0.8"],
-    "fast_high":   ["pitch=200", "tempo=1.3"],
+    "megaphone":   ["bandpass=500:4000", "overdrive=30", "vol=1.5"],
+    # Curated voice stackups — pro vocal chains + character voices.
+    # Order follows the convention: filters/EQ → compression → drive →
+    # modulation → reverb last.
+    "broadcaster": ["highpass=90", "mid=300:-3", "compressor=-18:3",
+                    "mid=3000:3", "treble=3", "bass=2"],
+    "podcast":     ["highpass=80", "bass=3", "compressor=-20:2.5",
+                    "mid=250:-2", "treble=2"],
+    "trailer":     ["pitch=-250", "bass=5", "compressor=-18:4",
+                    "mid=2500:2", "reverb=22"],
+    "audiobook":   ["highpass=85", "compressor=-22:3", "mid=2500:2", "reverb=10"],
+    "walkie_talkie": ["highpass=400", "lowpass=5000", "overdrive=8",
+                      "compressor=-24:6", "vol=1.3"],
+    "vintage_radio": ["highpass=400", "lowpass=4000", "mid=1000:12",
+                      "overdrive=8", "compressor=-26:3", "tremolo=4:0.15",
+                      "reverb=8", "vol=1.3"],
+    "intercom":    ["bandpass=450:2500", "overdrive=18", "mid=1500:4",
+                    "reverb=30", "vol=1.5"],
+    "underwater":  ["lowpass=700", "chorus", "pitch=-80", "tremolo=1.5:0.2",
+                    "vol=1.35"],
+    "alien":       ["pitch=150", "phaser=0.4:0.5", "flanger", "reverb=30"],
+    "ethereal":    ["highpass=250", "pitch=120", "reverb=70",
+                    "tremolo=3:0.25", "treble=3"],
+    "dragon":      ["pitch=-450", "bass=7", "mid=700:4", "compressor=-18:4",
+                    "overdrive=14", "chorus", "reverb=25"],
 }
 
 
@@ -119,6 +152,59 @@ def _parse_fade(p) -> list:
         # sox fade format: fade [type] fade-in-length [stop-position] fade-out-length
         return ["fade", parts[0], "0", parts[1]]
     raise ValueError(f"fade expects in-seconds:out-seconds, got: {p!r}")
+
+
+def _parse_mid(p) -> list:
+    """mid=1000:6  →  ['equalizer', '1000', '1.0q', '6']  (peaking EQ, fixed Q=1)"""
+    freq, gain = "1000", "0"
+    if p:
+        parts = str(p).split(":")
+        if len(parts) != 2:
+            raise ValueError(f"mid expects freq:gain, got: {p!r}")
+        freq, gain = parts
+    return ["equalizer", freq, "1.0q", gain]
+
+
+def _parse_tremolo(p) -> list:
+    """tremolo=5:0.5  →  ['tremolo', '5', '50']  (depth 0-1 → sox percent)"""
+    speed, depth = "5", "0.4"
+    if p:
+        parts = str(p).split(":")
+        if len(parts) != 2:
+            raise ValueError(f"tremolo expects speed:depth, got: {p!r}")
+        speed, depth = parts
+    return ["tremolo", speed, str(float(depth) * 100)]
+
+
+def _parse_phaser(p) -> list:
+    """phaser=0.5:0.4  →  ['phaser', '0.7', '0.7', '3.0', '0.4', '0.5', '-s'] (speed:decay)"""
+    speed, decay = "0.5", "0.4"
+    if p:
+        parts = str(p).split(":")
+        if len(parts) != 2:
+            raise ValueError(f"phaser expects speed:decay, got: {p!r}")
+        speed, decay = parts
+    # sox phaser: gain-in gain-out delay decay speed shape
+    return ["phaser", "0.7", "0.7", "3.0", decay, speed, "-s"]
+
+
+def _parse_compressor(p) -> list:
+    """compressor=-20:4  →  a sox `compand` with a two-segment downward curve.
+
+    Maps threshold (dBFS) + ratio to a compand transfer function: unity below
+    threshold, then `ratio:1` reduction from threshold up to 0 dBFS.
+    """
+    threshold, ratio = -20.0, 4.0
+    if p:
+        parts = str(p).split(":")
+        if len(parts) != 2:
+            raise ValueError(f"compressor expects threshold_dB:ratio, got: {p!r}")
+        threshold, ratio = float(parts[0]), float(parts[1])
+    # Output level at 0 dBFS input after compression above the threshold.
+    out_at_zero = threshold + (0.0 - threshold) / max(ratio, 1.0)
+    # compand attack,decay  soft-knee:in1,out1,in2,out2
+    transfer = f"6:-90,-90,{threshold:g},{threshold:g},0,{out_at_zero:g}"
+    return ["compand", "0.005,0.1", transfer]
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

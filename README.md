@@ -444,16 +444,24 @@ marmalade-tts --list-effects
 
 | Preset | Effects applied |
 |--------|----------------|
-| `robot` | overdrive + deep pitch shift + reverb |
+| `robot` | overdrive + pitch shift + reverb |
 | `cave` | heavy reverb + echo |
 | `chipmunk` | pitch up + slightly faster |
 | `deep` | pitch down + bass boost |
 | `telephone` | bandpass filter + overdrive |
-| `whisper` | quieter + treble boost + reverb |
 | `stadium` | heavy reverb + echo |
 | `megaphone` | bandpass + heavy overdrive + volume boost |
-| `slow_deep` | pitch down + slower tempo |
-| `fast_high` | pitch up + faster tempo |
+| `broadcaster` | radio-DJ polish — low cut, mud cut, compression, presence |
+| `podcast` | warm, intimate — low cut, warmth, gentle compression |
+| `trailer` | deep cinematic VO — pitch down, compression, controlled reverb |
+| `audiobook` | even narration — low cut, compression, clarity, hint of room |
+| `walkie_talkie` | handheld radio — tight band, drive, hard squash |
+| `vintage_radio` | old AM radio — HP/LP 400-4kHz band, +12 dB mid honk at 1 kHz, tube saturation, leveling compression, subtle AM throb, cabinet reverb |
+| `intercom` | PA / intercom — midrange horn, heavy drive, room slap |
+| `underwater` | submerged — dark low-pass, chorus, pitch + wobble |
+| `alien` | otherworldly — pitch up, phaser + flanger, big space |
+| `ethereal` | ethereal haunt — thin lows, pitch shimmer, long reverb |
+| `dragon` | monster — chest, growl, grit, doubled chorus, cavern reverb |
 
 ### Available effects
 
@@ -986,6 +994,21 @@ the text selects the emotional speaking style. Future directions —
 a shared emoji→emotion layer that maps onto *any* expression-capable
 engine, more EmojiVoice speakers, and a wider emoji vocabulary — are
 tracked alongside FOSS expressive-TTS research.
+
+### Cross-distro test matrix + CI
+
+**TODO:** add automated cross-distro install/test CI, mirroring the tiered
+setup built for the sibling **marmalade-stt-cli** (`scripts/test-matrix.sh` +
+a GitHub Actions / Forgejo workflow). The unit suite already exists; what's
+missing is verifying the package + its many optional engine deps install and
+import cleanly on a matrix of distros (Debian/Ubuntu/Fedora) in fresh
+containers, plus a `.deb`-install smoke job. Pattern to copy:
+`~/coding/marmalade-stt-cli` — a `device=`-style DI seam for anything that
+needs hardware (here: audio output / the synth daemon), pytest markers to split
+fast unit tests from slow engine/integration tests, and `docker run` per distro
+in the matrix script so CI and local stay in sync. Engine-download tests should
+cache models and run on a single distro; the broad matrix stays fast on the
+unit tier.
 
 ---
 
