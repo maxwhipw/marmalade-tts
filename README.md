@@ -403,7 +403,7 @@ You can set per-engine rule lists in `~/.config/marmalade-tts/config.yaml`:
 ```yaml
 engines:
   kokoro:
-    preprocessing: [currency, percent, ordinal, time, url]
+    preprocessing: [currency, percentage, ordinal, time, url]
   piper:
     preprocessing: true    # all rules (default)
   kitten:
@@ -462,6 +462,12 @@ marmalade-tts --list-effects
 | `alien` | otherworldly — pitch up, phaser + flanger, big space |
 | `ethereal` | ethereal haunt — thin lows, pitch shimmer, long reverb |
 | `dragon` | monster — chest, growl, grit, doubled chorus, cavern reverb |
+| `cyborg` | Dalek/cyborg — ring mod through a telephone band + grit |
+| `eight_bit` | 8-bit retro game voice — heavy crush + makeup |
+| `glitch` | glitchy lo-fi transmission — crush + ring shimmer through a radio band |
+
+`cyborg`, `eight_bit`, and `glitch` mirror the built-in effects in the
+[marmalade-tts-android](https://github.com/maxwhipw/marmalade-tts-android) app.
 
 ### Available effects
 
@@ -481,6 +487,14 @@ marmalade-tts --list-effects
 | `vol` | volume multiplier | `vol=2.0` |
 | `normalize` | (none) | `normalize` |
 | `fade` | in-seconds:out-seconds | `fade=0.1:0.5` |
+| `lowpass` | cutoff Hz (default 3000) | `lowpass=4000` |
+| `highpass` | cutoff Hz (default 300) | `highpass=400` |
+| `mid` | freq:gain (peaking EQ) | `mid=1000:6` |
+| `tremolo` | speed:depth (depth 0-1) | `tremolo=5:0.5` |
+| `phaser` | speed:decay | `phaser=0.5:0.4` |
+| `compressor` | threshold_dB:ratio | `compressor=-20:4` |
+| `ringmod` | freq:mix (mix 0-1, Dalek/cyborg timbre) | `ringmod=60:0.7` |
+| `bitcrush` | bits:factor (lo-fi crush) | `bitcrush=6:6` |
 
 ### Default effects per engine
 
@@ -538,6 +552,17 @@ Or use systemd to keep the daemon alive across reboots:
 ```sh
 systemctl --user enable marmalade-kitten
 systemctl --user start  marmalade-kitten
+```
+
+A daemon loads **one** model at startup, derived from your config at the
+moment it starts (e.g. kitten's `model_size`, kokoro's `lang`, matcha's
+`model`). If you change that config after the daemon is already running,
+it keeps serving the old model — it does **not** hot-reload. A request
+that doesn't match what's loaded is refused with a restart hint rather
+than silently synthesized with the wrong model:
+
+```sh
+marmalade-tts daemon stop --engine kitten   # it auto-starts again on next use
 ```
 
 ---
@@ -651,7 +676,7 @@ engines:
     voice: heart        # bare name (or canonical "af_heart" for back-compat)
     # lang: a           # optional — defaults to the voice's natural language
     daemon: false
-    # preprocessing: [currency, percent]   # or true / false
+    # preprocessing: [currency, percentage]   # or true / false
 
   kitten:
     device: cpu
@@ -763,7 +788,7 @@ aplay "$WAV"
 # JSON result for structured consumption
 marmalade-tts --json --no-play "Hello"
 # → {"ok": true, "version": "0.5.0", "engine": "kitten", "voice": "Kiki",
-#    "out": "/tmp/...", "effects": [], "text": "Hello"}
+#    "out": "/tmp/...", "effects": [], "text": "Hello", "duration": 0.84}
 
 # Never play back, just generate
 marmalade-tts --no-play --out result.wav "Generate but don't play"
@@ -889,10 +914,10 @@ readable in the subtitle, even though they're stripped before synthesis).
 
 ```sh
 # One WAV per chapter + a single .srt that maps onto them in order
-marmalade-tts kokoro @chapters.txt --out-dir ./out/ --srt out/chapters.srt
+marmalade-tts kokoro --batch @chapters.txt --out-dir ./out/ --srt out/chapters.srt
 
 # WebVTT for the web
-marmalade-tts kokoro @chapters.txt --out-dir ./out/ --vtt out/chapters.vtt
+marmalade-tts kokoro --batch @chapters.txt --out-dir ./out/ --vtt out/chapters.vtt
 
 # Single utterance also works — one-cue file
 marmalade-tts kokoro "Hello world" --no-play --out hello.wav --srt hello.srt
