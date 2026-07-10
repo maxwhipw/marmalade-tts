@@ -341,3 +341,73 @@ class TestSynthesizeSocket:
                     )
 
         mock_client.close.assert_called_once()
+
+
+# ── _daemon_env ───────────────────────────────────────────────────────────────
+
+class TestDaemonEnv:
+    """Daemon model env vars must derive from the user's config, so
+    `daemon: true` speaks the same model the subprocess path would."""
+
+    def _with_cfg(self, cfg):
+        return patch("marmalade_tts.config.load", return_value=cfg)
+
+    def test_kitten_model_from_config(self):
+        with self._with_cfg({"engines": {"kitten": {"model_size": "mini"}}}):
+            assert daemon_mod._daemon_env("kitten") == {"KITTEN_MODEL": "mini"}
+
+    def test_kitten_default_is_micro(self):
+        # config-default.yaml default; the old hardcoded env said nano.
+        with self._with_cfg({}):
+            assert daemon_mod._daemon_env("kitten") == {"KITTEN_MODEL": "micro"}
+
+    def test_kokoro_lang_from_config(self):
+        with self._with_cfg({"engines": {"kokoro": {"lang": "b"}}}):
+            assert daemon_mod._daemon_env("kokoro") == {"KOKORO_LANG": "b"}
+
+    def test_piper_model_from_config_expands_user(self):
+        with self._with_cfg({"engines": {"piper": {"model": "~/v/foo.onnx"}}}):
+            env = daemon_mod._daemon_env("piper")
+            assert env["PIPER_MODEL"] == os.path.expanduser("~/v/foo.onnx")
+
+    def test_coqui_model_from_config(self):
+        with self._with_cfg({"engines": {"coqui": {"model": "tts_models/x/y/z"}}}):
+            assert daemon_mod._daemon_env("coqui") == {"COQUI_MODEL": "tts_models/x/y/z"}
+
+    def test_config_load_failure_falls_back_to_defaults(self):
+        with patch("marmalade_tts.config.load", side_effect=OSError("boom")):
+            assert daemon_mod._daemon_env("kitten") == {"KITTEN_MODEL": "micro"}
+
+    def test_unknown_engine_empty(self):
+        with self._with_cfg({}):
+            assert daemon_mod._daemon_env("pocket") == {}
+
+
+# ── daemon/_common.py check_loaded ────────────────────────────────────────────
+
+class TestCheckLoaded:
+    """The daemon-side mismatch guard (loaded via importlib since daemon/
+    scripts aren't a package)."""
+
+    @staticmethod
+    def _common():
+        import importlib.util
+        path = os.path.join(os.path.dirname(__file__), "..", "daemon", "_common.py")
+        spec = importlib.util.spec_from_file_location("daemon_common_test", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_match_passes(self):
+        self._common().check_loaded("kitten", "repo/x", "repo/x")
+
+    def test_absent_identity_passes(self):
+        # Old clients (or engines with no model concept) send nothing.
+        self._common().check_loaded("kitten", None, "repo/x")
+
+    def test_mismatch_raises_with_guidance(self):
+        with pytest.raises(RuntimeError) as ei:
+            self._common().check_loaded("kitten", "repo/y", "repo/x")
+        msg = str(ei.value)
+        assert "repo/x" in msg and "repo/y" in msg
+        assert "daemon stop --engine kitten" in msg

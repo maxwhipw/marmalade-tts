@@ -61,7 +61,10 @@ class CoquiEngine(Engine):
                            if speaker_wav_val else None)
 
         if self.use_daemon:
-            request = {"text": text, "out": out_path, "speed": float(speed)}
+            # "model" lets the daemon verify it has this model loaded (it
+            # loads one model at startup and refuses mismatches).
+            request = {"text": text, "out": out_path, "speed": float(speed),
+                       "model": model}
             if speaker_val is not None:
                 request["speaker"] = speaker_val
             if self.speaker_idx is not None:

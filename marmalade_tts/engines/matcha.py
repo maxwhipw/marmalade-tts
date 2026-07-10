@@ -62,7 +62,10 @@ class MatchaEngine(Engine):
         spk = speaker if speaker is not None else self.spk
 
         if self.use_daemon:
-            request = {"text": text, "speed": speed, "out": out_path}
+            # "model" lets the daemon verify it has this model loaded (it
+            # loads one model at startup and refuses mismatches).
+            request = {"text": text, "speed": speed, "out": out_path,
+                       "model": model}
             if spk is not None:
                 request["spk"] = int(spk)
             if self.steps is not None:

@@ -14,7 +14,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import serve
+from _common import serve, check_loaded
 import _matcha_synth
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -28,6 +28,7 @@ def load_model():
 
 
 def synth(state, req):
+    check_loaded("matcha", req.get("model"), DEFAULT_MODEL)
     spk = req.get("spk")
     speed = float(req.get("speed", 1.0))
     length_scale = 1.0 / speed if speed else 1.0

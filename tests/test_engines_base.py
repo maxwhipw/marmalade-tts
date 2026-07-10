@@ -125,3 +125,54 @@ class TestSoxTempo:
         # Original is untouched and a warning was printed
         assert wav.read_bytes() == b"original"
         assert "sox" in capsys.readouterr().err.lower()
+
+
+# ── Daemon requests carry model identity ─────────────────────────────────────
+
+class TestDaemonRequestCarriesModel:
+    """Daemon-mode requests must tell the daemon which model/lang the config
+    resolved to, so a stale daemon refuses instead of silently speaking the
+    wrong model (the kitten micro-config/nano-daemon bug)."""
+
+    def _capture(self):
+        return patch("marmalade_tts.daemon.synthesize")
+
+    def test_kitten_sends_model_repo(self):
+        from marmalade_tts.engines.kitten import KittenEngine
+        eng = KittenEngine({"daemon": True, "model_size": "micro"})
+        with self._capture() as syn:
+            eng.synthesize("hi", "/tmp/o.wav")
+        req = syn.call_args.args[1]
+        assert req["model"] == "KittenML/kitten-tts-micro-0.8"
+
+    def test_kokoro_sends_resolved_lang(self):
+        from marmalade_tts.engines.kokoro import KokoroEngine
+        eng = KokoroEngine({"daemon": True})
+        with self._capture() as syn:
+            eng.synthesize("hi", "/tmp/o.wav", voice="george")  # British voice
+        req = syn.call_args.args[1]
+        assert req["lang"] == "b"
+
+    def test_piper_sends_model_path(self):
+        from marmalade_tts.engines.piper import PiperEngine
+        eng = PiperEngine({"daemon": True, "model": "~/v/foo.onnx"})
+        with self._capture() as syn:
+            eng.synthesize("hi", "/tmp/o.wav")
+        req = syn.call_args.args[1]
+        assert req["model"] == os.path.expanduser("~/v/foo.onnx")
+
+    def test_coqui_sends_model(self):
+        from marmalade_tts.engines.coqui import CoquiEngine
+        eng = CoquiEngine({"daemon": True, "model": "tts_models/x/y/z"})
+        with self._capture() as syn:
+            eng.synthesize("hi", "/tmp/o.wav")
+        req = syn.call_args.args[1]
+        assert req["model"] == "tts_models/x/y/z"
+
+    def test_matcha_sends_model(self):
+        from marmalade_tts.engines.matcha import MatchaEngine
+        eng = MatchaEngine({"daemon": True})
+        with self._capture() as syn:
+            eng.synthesize("hi", "/tmp/o.wav")
+        req = syn.call_args.args[1]
+        assert req["model"] == "matcha_ljspeech"

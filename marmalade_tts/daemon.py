@@ -159,6 +159,42 @@ def _start_via_systemd(engine: str) -> bool:
     return r.returncode == 0
 
 
+def _daemon_env(engine: str) -> dict:
+    """Env overrides telling the daemon which model to load, from config.
+
+    A daemon loads ONE model at startup. Deriving these from the user's
+    config keeps `daemon: true` consistent with what the same config makes
+    the subprocess path speak — previously the model choice lived only in
+    hardcoded literals here, so e.g. a kitten user with the default
+    `model_size: micro` got a nano daemon. The daemons themselves also
+    verify each request against their loaded model (see daemon/*.py).
+    """
+    from . import config as cfg_mod
+    try:
+        eng = cfg_mod.engine_cfg(cfg_mod.load(), engine)
+    except Exception:
+        eng = {}
+
+    if engine == "kitten":
+        return {"KITTEN_MODEL": str(eng.get("model_size", "micro"))}
+    if engine == "kokoro":
+        return {"KOKORO_LANG": str(eng.get("lang") or "a")}
+    if engine == "piper":
+        model = eng.get("model") or "~/.local/share/piper/voices/en_US-lessac-medium.onnx"
+        return {"PIPER_MODEL": os.path.expanduser(model)}
+    if engine == "coqui":
+        return {"COQUI_MODEL": str(eng.get("model", "tts_models/en/ljspeech/tacotron2-DDC"))}
+    if engine == "matcha":
+        return {"MATCHA_MODEL": str(eng.get("model", "matcha_ljspeech"))}
+    if engine == "emojivoice":
+        # Voice → checkpoint file, mirroring EmojivoiceEngine.CHECKPOINTS
+        # (only "paige" ships today).
+        ckpt = f"emoji-hri-{eng.get('voice', 'paige')}-inference.ckpt"
+        return {"EMOJIVOICE_CKPT": os.path.expanduser(
+            os.path.join("~/.local/share/emojivoice/models", ckpt))}
+    return {}
+
+
 def _start_direct(engine: str) -> bool:
     """Start daemon directly as a background subprocess. Returns True if launched."""
     _, pid_path, _, script = _paths(engine)
@@ -172,19 +208,8 @@ def _start_direct(engine: str) -> bool:
         print(f"[daemon] No Python interpreter found for {engine}", file=sys.stderr)
         return False
 
-    # Env tweaks (mirrors what the systemd services do)
     env = os.environ.copy()
-    env_overrides = {
-        "kitten": {"KITTEN_MODEL": "nano"},
-        "kokoro": {"KOKORO_LANG":  "a"},
-        "piper":  {"PIPER_MODEL":  os.path.expanduser(
-                       "~/.local/share/piper/voices/en_US-lessac-medium.onnx")},
-        "coqui":  {"COQUI_MODEL":  "tts_models/en/ljspeech/tacotron2-DDC"},
-        "matcha": {"MATCHA_MODEL": "matcha_ljspeech"},
-        "emojivoice": {"EMOJIVOICE_CKPT": os.path.expanduser(
-                       "~/.local/share/emojivoice/models/emoji-hri-paige-inference.ckpt")},
-    }
-    env.update(env_overrides.get(engine, {}))
+    env.update(_daemon_env(engine))
 
     log_path = os.path.join(BASE_DIR, f"{engine}.log")
 

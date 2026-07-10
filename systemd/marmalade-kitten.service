@@ -8,7 +8,7 @@ ExecStart=%h/.local/share/kittentts-venv/bin/python \
     %h/.local/share/marmalade-tts/daemon/kitten-daemon.py
 Restart=on-failure
 RestartSec=5
-Environment=KITTEN_MODEL=nano
+Environment=KITTEN_MODEL=micro
 
 [Install]
 WantedBy=default.target

@@ -36,7 +36,10 @@ class KittenEngine(Engine):
         v = voice or self.voice
 
         if self.use_daemon:
-            request = {"text": text, "voice": v, "speed": speed, "out": out_path}
+            # "model" lets the daemon verify it has this size loaded (it
+            # loads one model at startup and refuses mismatches).
+            request = {"text": text, "voice": v, "speed": speed,
+                       "model": self._repo(), "out": out_path}
             dmgr.synthesize("kitten", request, auto_start=True)
             return
 

@@ -52,6 +52,11 @@ class PiperEngine(Engine):
         model = model or voice
         if self.use_daemon:
             request = {"text": text, "speed": speed, "out": out_path}
+            # "model" lets the daemon verify it has this voice loaded (it
+            # loads one model at startup and refuses mismatches).
+            m = model or self._find_model()
+            if m:
+                request["model"] = os.path.expanduser(m)
             if speaker is not None:
                 request["speaker"] = speaker
             if self.noise_scale is not None:

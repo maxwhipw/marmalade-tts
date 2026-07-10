@@ -8,7 +8,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import serve
+from _common import serve, check_loaded
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["HF_HUB_OFFLINE"] = "1"
@@ -25,6 +25,11 @@ def load_model():
 def synth(pipeline, req):
     import numpy as np
     import soundfile as sf
+
+    # The pipeline's espeak language is fixed at load; a request for a
+    # different lang (e.g. a British voice through an 'a' daemon) would
+    # silently mispronounce, so refuse it instead.
+    check_loaded("kokoro", req.get("lang"), DEFAULT_LANG, what="lang")
 
     audio_chunks = []
     for result in pipeline(req["text"],

@@ -200,4 +200,4 @@ class TestCoquiDaemon:
                 "Hi", str(tmp_path / "o.wav"))
         req = mock_dmgr.call_args[0][1]
         # Only the required fields plus the always-set speed
-        assert set(req.keys()) == {"text", "out", "speed"}
+        assert set(req.keys()) == {"text", "out", "speed", "model"}

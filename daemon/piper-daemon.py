@@ -12,7 +12,7 @@ import sys
 import wave
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import serve
+from _common import serve, check_loaded
 
 DEFAULT_MODEL = os.environ.get(
     "PIPER_MODEL",
@@ -28,6 +28,9 @@ def load_model():
 def synth(voice, req):
     from piper.config import SynthesisConfig
 
+    want = req.get("model")
+    check_loaded("piper", os.path.expanduser(want) if want else None,
+                 os.path.expanduser(DEFAULT_MODEL))
     speed = float(req.get("speed", 1.0))
     syn_cfg = SynthesisConfig()
     syn_cfg.length_scale = 1.0 / speed if speed else 1.0

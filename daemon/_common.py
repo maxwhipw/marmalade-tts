@@ -44,6 +44,24 @@ def _setup_logging(engine: str, log_path: str) -> logging.Logger:
     return logging.getLogger(f"{engine}-daemon")
 
 
+def check_loaded(engine: str, requested, loaded, what: str = "model"):
+    """Refuse a request whose model identity doesn't match what's loaded.
+
+    A daemon loads ONE model at startup; the client sends the identity its
+    config resolved to, and a mismatch means the daemon predates a config
+    change (or the caller overrode --voice/--lang past what's loaded).
+    Raising here surfaces as {"ok": false, ...} to the client instead of
+    silently synthesizing with the wrong model.
+    """
+    if requested and str(requested) != str(loaded):
+        raise RuntimeError(
+            f"daemon has {what} {loaded!r} loaded but the request wants "
+            f"{requested!r}. Restart it to pick up config "
+            f"(marmalade-tts daemon stop --engine {engine}; it auto-starts "
+            f"on next use) or set engines.{engine}.daemon: false."
+        )
+
+
 def _read_request(conn):
     buf = b""
     while b"\n" not in buf:

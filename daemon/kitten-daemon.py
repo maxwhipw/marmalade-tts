@@ -8,7 +8,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import serve
+from _common import serve, check_loaded
 
 # Force CPU and offline mode — Pascal sm_61 isn't supported by current torch wheels,
 # and we don't want re-downloads after the first cache fill.
@@ -21,7 +21,7 @@ MODEL_REPOS = {
     "mini":  "KittenML/kitten-tts-mini-0.8",
 }
 
-_raw_model = os.environ.get("KITTEN_MODEL", "nano")
+_raw_model = os.environ.get("KITTEN_MODEL", "micro")  # micro = config-default.yaml default
 MODEL_REPO = MODEL_REPOS.get(_raw_model, _raw_model)  # accept size name or full repo
 
 
@@ -31,6 +31,8 @@ def load_model():
 
 
 def synth(model, req):
+    want = req.get("model")
+    check_loaded("kitten", MODEL_REPOS.get(want, want), MODEL_REPO)
     model.generate_to_file(
         req["text"],
         req["out"],

@@ -22,7 +22,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import serve
+from _common import serve, check_loaded
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
@@ -40,6 +40,7 @@ _PASSTHROUGH = ("speaker", "speaker_idx", "language", "speaker_wav", "emotion")
 
 
 def synth(model, req):
+    check_loaded("coqui", req.get("model"), DEFAULT_MODEL)
     kwargs = {"file_path": req["out"]}
     speed = req.get("speed")
     if speed is not None and float(speed) != 1.0:
