@@ -186,6 +186,17 @@ class TestAbbreviations:
         # Should spell out: U S A
         assert "U" in result
 
+    def test_ex(self):
+        result = preprocess("This works, ex. this sentence.", rules=["abbreviation"])
+        assert "for example" in result.lower()
+
+    def test_no_match_inside_words(self):
+        # Abbreviations must not fire on word endings: Rolex./craft./catalyst.
+        for text in ("I sold my Rolex. It was old.",
+                     "Nice craft. Very good.",
+                     "The catalyst. failed."):
+            assert preprocess(text, rules=["abbreviation"]) == text
+
 
 # ── Math symbols ─────────────────────────────────────────────────────────────
 

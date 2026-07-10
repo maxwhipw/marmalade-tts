@@ -453,7 +453,7 @@ RULES = {
                       "Expand URLs: https://example.com → example dot com"),
     "filename":      (r"\b(\w+)\.([a-zA-Z]{1,5})\b", _filename,
                       "Expand filenames: example.txt → example dot T X T"),
-    "abbreviation":  (r"\b(?:[A-Z]\.){2,}|(?:e\.g\.|i\.e\.|etc\.|vs\.|[Mm]r\.|[Mm]rs\.|[Mm]s\.|[Dd]r\.|[Ss]r\.|[Jj]r\.|[Ss]t\.|ft\.|lb\.|oz\.)", _abbreviation,
+    "abbreviation":  (r"\b(?:[A-Z]\.){2,}|\b(?:e\.g\.|i\.e\.|etc\.|vs\.|[Mm]r\.|[Mm]rs\.|[Mm]s\.|[Dd]r\.|[Ss]r\.|[Jj]r\.|[Ss]t\.|ft\.|lb\.|oz\.|ex\.)", _abbreviation,
                       "Expand abbreviations: U.S.A. → U S A, e.g. → for example"),
     "number":        (r"\b\d+(?:\.\d+)?\b", _number_to_words,
                       "Numbers to words: 42 → forty-two"),
