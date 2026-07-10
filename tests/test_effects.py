@@ -12,6 +12,7 @@ from marmalade_tts.effects import (
     sox_available, resolve_effect_list, build_sox_args, apply_effects,
     list_effects, _parse_spec, _parse_echo, _parse_bandpass, _parse_chorus,
     _parse_fade, _parse_mid, _parse_tremolo, _parse_phaser, _parse_compressor,
+    _parse_ringmod, _parse_bitcrush,
 )
 
 
@@ -147,6 +148,39 @@ class TestParsers:
         with pytest.raises(ValueError):
             _parse_compressor("just_one")
 
+    def test_ringmod_default(self):
+        assert _parse_ringmod(None) == ["tremolo", "60", "70.0"]
+
+    def test_ringmod_custom(self):
+        # mix 0-1 -> tremolo depth percent
+        assert _parse_ringmod("120:0.4") == ["tremolo", "120", "40.0"]
+
+    def test_ringmod_bad_format(self):
+        with pytest.raises(ValueError):
+            _parse_ringmod("60")
+
+    def test_bitcrush_default(self):
+        args = _parse_bitcrush(None)
+        # bits=6, factor=6: crush + limited makeup gain (20*log10(6) ~ 15.56 dB) + grit
+        assert args[:4] == ["downsample", "6", "upsample", "6"]
+        assert args[4:6] == ["gain", "-l"]
+        assert float(args[6]) == pytest.approx(15.56, abs=0.01)
+        assert args[7:] == ["overdrive", "8"]
+
+    def test_bitcrush_factor_one_is_grit_only(self):
+        # factor 1: no resample stage, just the bits-derived overdrive
+        assert _parse_bitcrush("12:1") == ["overdrive", "3.2"]
+
+    def test_bitcrush_sixteen_bits_no_grit(self):
+        # bits=16 -> no overdrive; factor 2 -> resample stage only
+        args = _parse_bitcrush("16:2")
+        assert "overdrive" not in args
+        assert args[:4] == ["downsample", "2", "upsample", "2"]
+
+    def test_bitcrush_bad_format(self):
+        with pytest.raises(ValueError):
+            _parse_bitcrush("6")
+
 
 # ── resolve_effect_list ───────────────────────────────────────────────────────
 
@@ -271,6 +305,12 @@ class TestPresets:
             "vintage_radio", "intercom", "underwater", "alien", "ethereal", "dragon",
         }
         assert expected.issubset(BUILTIN_PRESETS.keys())
+
+    def test_android_port_presets_present(self):
+        # Ports of the Android app's Android-only stackups (BuiltinEffects E-L).
+        assert {"cyborg", "eight_bit", "glitch"}.issubset(BUILTIN_PRESETS.keys())
+        # 'ai' is deliberately NOT ported (Monotone has no sox equivalent).
+        assert "ai" not in BUILTIN_PRESETS
 
     def test_removed_presets_no_longer_builtin(self):
         # whisper/slow_deep/fast_high were removed; they should not resolve

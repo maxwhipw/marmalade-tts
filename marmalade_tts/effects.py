@@ -19,6 +19,7 @@ Usage (CLI):
   marmalade-tts --list-effects                 # show all effects and presets
 """
 
+import math
 import os
 import shutil
 import subprocess
@@ -71,6 +72,10 @@ EFFECTS = {
                  "Phaser — sweeping notches (sci-fi)",                      "speed:decay, e.g. 0.5:0.4"),
     "compressor":(lambda p: _parse_compressor(p),
                  "Downward compressor (tame dynamics)",                     "threshold_dB:ratio, e.g. -20:4"),
+    "ringmod":  (lambda p: _parse_ringmod(p),
+                 "Ring modulator (Dalek/cyborg timbre)",                    "freq:mix, e.g. 60:0.7 (mix 0-1)"),
+    "bitcrush": (lambda p: _parse_bitcrush(p),
+                 "Lo-fi crush — sample-rate crush + digital grit",          "bits:factor, e.g. 6:6 (factor 1 = grit only)"),
 }
 
 
@@ -108,6 +113,14 @@ BUILTIN_PRESETS = {
                     "tremolo=3:0.25", "treble=3"],
     "dragon":      ["pitch=-450", "bass=7", "mid=700:4", "compressor=-18:4",
                     "overdrive=14", "chorus", "reverb=25"],
+    # Ports of marmalade-tts-android's Android-only stackups (BuiltinEffects
+    # E-L), block-for-block in the app's order. The app's 'ai' preset is NOT
+    # ported: its load-bearing Monotone block (YIN pitch flattener) has no
+    # sox equivalent.
+    "cyborg":      ["ringmod=60:0.7", "bandpass=300:3400", "overdrive=6"],
+    "eight_bit":   ["bitcrush=6:6", "lowpass=4000", "vol=1.35"],
+    "glitch":      ["bitcrush=8:3", "ringmod=120:0.4", "bandpass=400:3000",
+                    "vol=1.35"],
 }
 
 
@@ -205,6 +218,52 @@ def _parse_compressor(p) -> list:
     # compand attack,decay  soft-knee:in1,out1,in2,out2
     transfer = f"6:-90,-90,{threshold:g},{threshold:g},0,{out_at_zero:g}"
     return ["compand", "0.005,0.1", transfer]
+
+
+def _parse_ringmod(p) -> list:
+    """ringmod=60:0.7  →  ['tremolo', '60', '70']
+
+    Port of the Android app's RingMod block (multiply by a freq-Hz carrier
+    sine, blended dry/wet by mix). sox has no true ring modulator; tremolo at
+    audio rate is amplitude modulation — same sidebands plus the dry carrier,
+    which perceptually matches a mix-blended ring mod. depth = mix * 100.
+    """
+    freq, mix = "60", "0.7"
+    if p:
+        parts = str(p).split(":")
+        if len(parts) != 2:
+            raise ValueError(f"ringmod expects freq:mix, got: {p!r}")
+        freq, mix = parts
+    return ["tremolo", freq, str(float(mix) * 100)]
+
+
+def _parse_bitcrush(p) -> list:
+    """bitcrush=6:6  →  ['downsample', '6', 'upsample', '6', 'gain', ...]
+
+    Port of the Android app's Bitcrush block (quantize to `bits` bit depth +
+    sample-and-hold every `factor` samples). sox processes in floating point,
+    so true in-chain bit-depth quantization is impossible; the sample-rate
+    crush (downsample/upsample, which dominates the lo-fi character) is exact
+    in spirit, and the bit-depth grit is approximated with a small overdrive
+    scaled from `bits` ((16 - bits) * 0.8 dB, none at 16). The limited gain
+    stage (`gain -l`) makes up the 1/factor level lost to upsample's
+    zero-stuffing without hard-clipping the peaks it preserves.
+    """
+    bits, factor = 6.0, 6
+    if p:
+        parts = str(p).split(":")
+        if len(parts) != 2:
+            raise ValueError(f"bitcrush expects bits:factor, got: {p!r}")
+        bits, factor = float(parts[0]), int(parts[1])
+    args = []
+    if factor > 1:
+        makeup = 20 * math.log10(factor)
+        args += ["downsample", str(factor), "upsample", str(factor),
+                 "gain", "-l", f"{makeup:.2f}"]
+    grit = (16 - bits) * 0.8
+    if grit > 0:
+        args += ["overdrive", f"{grit:g}"]
+    return args
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
