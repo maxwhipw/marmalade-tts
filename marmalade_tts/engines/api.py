@@ -19,6 +19,9 @@ Key resolution order:
 
 import json
 import os
+import shutil
+import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -77,6 +80,13 @@ class ApiEngine(Engine):
             # WAV on disk, so we always ask the provider for wav.
             "response_format": "wav",
             "speed": speed,
+            # Venice streams audio as it generates (first byte ~0.6s instead
+            # of after full synthesis). We still read to completion — the
+            # file is identical — but leaving this on keeps the door open
+            # for progressive playback and costs nothing. Providers that
+            # don't know the field ignore it; override via ``extra`` if one
+            # ever rejects it.
+            "streaming": True,
             **self.extra,
         }
         req = urllib.request.Request(
@@ -103,9 +113,44 @@ class ApiEngine(Engine):
             raise EngineError(
                 f"[api] Could not reach {self.base_url}: {e.reason}"
             ) from None
+        except OSError as e:
+            # Read-phase failures (socket timeout mid-response, connection
+            # reset) surface as bare OSError/TimeoutError, not URLError.
+            raise EngineError(
+                f"[api] Request to {self.base_url} failed: "
+                f"{e or type(e).__name__}"
+            ) from None
 
-        with open(out_path, "wb") as f:
-            f.write(audio)
+        if audio[:4] == b"RIFF":
+            with open(out_path, "wb") as f:
+                f.write(audio)
+        else:
+            # Some Venice models (tts-qwen3-*) ignore response_format and
+            # return MP3 no matter what. The pipeline needs WAV on disk, so
+            # transcode via ffmpeg.
+            self._transcode_to_wav(audio, out_path)
+
+    def _transcode_to_wav(self, audio: bytes, out_path: str):
+        if not shutil.which("ffmpeg"):
+            raise EngineError(
+                "[api] Provider returned non-WAV audio and ffmpeg is not "
+                "installed to convert it.\n"
+                "  Install ffmpeg, or pick a model that honors "
+                "response_format=wav (e.g. tts-kokoro)."
+            )
+        with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as tmp:
+            tmp.write(audio)
+            tmp_path = tmp.name
+        try:
+            proc = subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", tmp_path, out_path],
+                capture_output=True)
+            if proc.returncode != 0:
+                raise EngineError(
+                    f"[api] ffmpeg failed to convert the provider's audio:\n"
+                    f"{proc.stderr.decode(errors='replace')}")
+        finally:
+            os.unlink(tmp_path)
 
     def list_voices(self):
         """Query the provider's model list and print models + voices.

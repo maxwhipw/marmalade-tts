@@ -72,14 +72,14 @@ class TestSynthesize:
         payload = json.loads(req.data)
         assert payload == {"model": "tts-kokoro", "input": "hello there",
                            "voice": "bm_george", "response_format": "wav",
-                           "speed": 1.25}
+                           "speed": 1.25, "streaming": True}
         with open(out, "rb") as f:
             assert f.read() == b"RIFFfake-wav"
 
     def test_config_voice_used_when_no_override(self, tmp_path):
         out = str(tmp_path / "out.wav")
         with patch("marmalade_tts.engines.api.urllib.request.urlopen",
-                   return_value=fake_response(b"x")) as mock_open:
+                   return_value=fake_response(b"RIFFx")) as mock_open:
             make_engine(voice="af_sky").synthesize("hi", out)
         assert json.loads(mock_open.call_args[0][0].data)["voice"] == "af_sky"
 
@@ -87,7 +87,7 @@ class TestSynthesize:
         out = str(tmp_path / "out.wav")
         eng = make_engine(extra={"instructions": "whisper"})
         with patch("marmalade_tts.engines.api.urllib.request.urlopen",
-                   return_value=fake_response(b"x")) as mock_open:
+                   return_value=fake_response(b"RIFFx")) as mock_open:
             eng.synthesize("hi", out)
         assert json.loads(mock_open.call_args[0][0].data)["instructions"] == "whisper"
 
@@ -108,6 +108,32 @@ class TestSynthesize:
             with pytest.raises(EngineError) as exc:
                 make_engine().synthesize("hi", str(tmp_path / "out.wav"))
         assert "no route to host" in str(exc.value)
+
+    def test_read_timeout_raises_engine_error(self, tmp_path):
+        with patch("marmalade_tts.engines.api.urllib.request.urlopen",
+                   side_effect=TimeoutError("timed out")):
+            with pytest.raises(EngineError) as exc:
+                make_engine().synthesize("hi", str(tmp_path / "out.wav"))
+        assert "timed out" in str(exc.value)
+
+    def test_non_wav_response_transcoded_via_ffmpeg(self, tmp_path):
+        out = str(tmp_path / "out.wav")
+        with patch("marmalade_tts.engines.api.urllib.request.urlopen",
+                   return_value=fake_response(b"ID3\x04mp3-bytes")), \
+             patch("marmalade_tts.engines.api.shutil.which", return_value="/usr/bin/ffmpeg"), \
+             patch("marmalade_tts.engines.api.subprocess.run",
+                   return_value=MagicMock(returncode=0)) as mock_run:
+            make_engine().synthesize("hi", out)
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "ffmpeg" and cmd[-1] == out
+
+    def test_non_wav_response_without_ffmpeg_raises(self, tmp_path):
+        with patch("marmalade_tts.engines.api.urllib.request.urlopen",
+                   return_value=fake_response(b"ID3\x04mp3-bytes")), \
+             patch("marmalade_tts.engines.api.shutil.which", return_value=None):
+            with pytest.raises(EngineError) as exc:
+                make_engine().synthesize("hi", str(tmp_path / "out.wav"))
+        assert "ffmpeg" in str(exc.value)
 
     def test_missing_key_fails_before_any_request(self, tmp_path):
         eng = ApiEngine({"api_key_env": "MARMALADE_TEST_MISSING"})
