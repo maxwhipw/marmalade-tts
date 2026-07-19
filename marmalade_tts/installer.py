@@ -39,6 +39,10 @@ import urllib.request
 #                  auto-fetched models so the first real run is offline-safe.
 #   selftest_text  phrase synthesized for the post-install self-test.
 
+# Engines with no local footprint (no venv, no models). `install` prints a
+# pointer instead of erroring so `init` can select them like any other engine.
+NO_INSTALL_ENGINES = {"api"}
+
 INSTALL_RECIPES = {
     "kitten": {
         "python": "3.11",
@@ -444,6 +448,14 @@ def install_engine(name: str, allow_sudo: bool = False, reinstall: bool = False,
     problems are captured in the returned dict so a batch install can
     continue with the next engine.
     """
+    if name in NO_INSTALL_ENGINES:
+        print(f"\n[install] ━━ {name} ━━")
+        print(f"[install] {name}: hosted engine — nothing to install locally.")
+        print("[install]   Set your API key (default: the VENICE_API_KEY env "
+              "var; see engines.api in config.yaml).")
+        return {"engine": name, "venv": None, "system_deps": [],
+                "models": [], "selftest": None, "error": None}
+
     if name not in INSTALL_RECIPES:
         sys.exit(f"[install] unknown engine: {name!r} "
                  f"(known: {', '.join(INSTALL_RECIPES)})")

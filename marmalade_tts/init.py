@@ -3,6 +3,7 @@
 import os
 import sys
 
+from .engines.api import VOICES as _API_VOICE_CHOICES
 from .engines.kokoro import (
     VOICES_BY_LANG as _KOKORO_VOICES_BY_LANG,
     is_voice_token as _kokoro_is_voice_token,
@@ -99,9 +100,28 @@ ENGINE_INFO = {
             },
         },
     },
+    "api": {
+        "label": "API TTS",
+        "desc":  "Hosted OpenAI-compatible TTS (Venice by default). Needs an API key + network.",
+        "size":  "nothing to download",
+        "default": False,
+        "options": {
+            "voice": {
+                "prompt": "Default voice",
+                "choices": _API_VOICE_CHOICES,
+                "default": "af_heart",
+                # Voices are provider/model-dependent (choices only lists
+                # Venice's tts-kokoro set) — accept anything non-interactively.
+                "validate": lambda v: bool(v),
+                "help": ("Venice tts-kokoro voice IDs shown; other models/providers "
+                         "have their own — run `marmalade-tts api --list`. "
+                         "Set VENICE_API_KEY (or engines.api.api_key_env) before use."),
+            },
+        },
+    },
 }
 
-ENGINE_ORDER = ["kitten", "piper", "kokoro", "coqui", "pocket", "matcha", "emojivoice"]
+ENGINE_ORDER = ["kitten", "piper", "kokoro", "coqui", "pocket", "matcha", "emojivoice", "api"]
 
 # ── TUI helpers (stdlib only) ────────────────────────────────────────────────
 
@@ -297,6 +317,8 @@ def init_non_interactive(engines, engine_options=None):
             cfg.setdefault("model", "matcha_ljspeech")
         elif eng == "emojivoice":
             cfg.setdefault("voice", "paige")
+        elif eng == "api":
+            cfg.setdefault("voice", "af_heart")
 
         cfg.setdefault("daemon", False)
         cfg.setdefault("device", "cpu")
@@ -376,6 +398,8 @@ def init_interactive():
             cfg.setdefault("model", "matcha_ljspeech")
         elif eng == "emojivoice":
             cfg.setdefault("voice", "paige")
+        elif eng == "api":
+            cfg.setdefault("voice", "af_heart")
 
         cfg.setdefault("daemon", False)
         cfg.setdefault("device", "cpu")

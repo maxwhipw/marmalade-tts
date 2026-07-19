@@ -542,6 +542,15 @@ ENGINE_PROFILES = {
         "pronounce",
         "math", "ampersand", "hashtag",
     ],
+    "api": [
+        # Hosted models (Venice default = Kokoro) normalize numbers and
+        # abbreviations natively — same profile as local kokoro.
+        "markdown", "html",
+        "currency", "percentage", "time", "date",
+        "email", "url", "filename",
+        "pronounce",
+        "math", "ampersand", "hashtag", "emoji",
+    ],
 }
 
 

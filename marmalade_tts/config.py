@@ -17,9 +17,9 @@ DEFAULT_CONFIG = {
         "play": True,
     },
     "presets": {
-        "fast":     {"kitten": "nano",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "alba",    "matcha": "matcha_ljspeech", "emojivoice": "paige"},
-        "balanced": {"kitten": "micro", "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "fantine", "matcha": "matcha_ljspeech", "emojivoice": "paige"},
-        "quality":  {"kitten": "mini",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "cosette", "matcha": "matcha_ljspeech", "emojivoice": "paige"},
+        "fast":     {"kitten": "nano",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "alba",    "matcha": "matcha_ljspeech", "emojivoice": "paige", "api": "af_heart"},
+        "balanced": {"kitten": "micro", "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "fantine", "matcha": "matcha_ljspeech", "emojivoice": "paige", "api": "af_heart"},
+        "quality":  {"kitten": "mini",  "kokoro": "af_heart", "piper": "en_US-lessac-medium", "coqui": "tts_models/en/ljspeech/tacotron2-DDC", "pocket": "cosette", "matcha": "matcha_ljspeech", "emojivoice": "paige", "api": "af_heart"},
     },
     "engines": {
         "kitten": {
@@ -62,6 +62,15 @@ DEFAULT_CONFIG = {
             "device": "cpu",
             "voice": "paige",
             "daemon": False,
+        },
+        "api": {
+            "base_url": "https://api.venice.ai/api/v1",
+            "model": "tts-kokoro",
+            "voice": "af_heart",
+            "api_key_env": "VENICE_API_KEY",
+            # api_key: sk-...       # inline key (env var preferred)
+            # timeout: 120
+            # extra: {}             # provider-specific payload passthrough
         },
     },
     # Aliases: named bundles (engine + voice + speed + …) invoked positionally

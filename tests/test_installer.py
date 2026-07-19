@@ -16,9 +16,19 @@ from marmalade_tts import installer
 
 class TestInstallRecipes:
     def test_every_engine_has_a_recipe(self):
+        # Hosted engines (NO_INSTALL_ENGINES) have no local footprint and
+        # deliberately no recipe.
         from marmalade_tts.init import ENGINE_INFO
         for eng in ENGINE_INFO:
+            if eng in installer.NO_INSTALL_ENGINES:
+                continue
             assert eng in installer.INSTALL_RECIPES, f"{eng} missing a recipe"
+
+    def test_no_install_engine_returns_clean_result(self, capsys):
+        result = installer.install_engine("api")
+        assert result["error"] is None
+        assert result["selftest"] is None
+        assert "nothing to install" in capsys.readouterr().out
 
     def test_recipe_has_required_keys(self):
         required = {"python", "venv", "pip", "pip_post", "system_deps",

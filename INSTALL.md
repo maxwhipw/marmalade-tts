@@ -60,6 +60,7 @@ For each selected engine, `marmalade-tts install` runs these steps
 | pocket | `~/.local/share/pocket-tts-venv` | system | `pocket-tts` `scipy` | — | auto (HuggingFace) |
 | matcha | `~/.local/share/matcha-tts-venv` | **3.11** | `matcha-tts` | `espeak-ng` | auto (matcha-tts) |
 | emojivoice | `~/.local/share/emojivoice-venv` | **3.11** | `matcha-tts` | `espeak-ng` | `paige` checkpoint (manifest) |
+| api | — (hosted; nothing installed) | — | — | — | — (needs an API key: see below) |
 
 > matcha-tts does **not** build on Python 3.12 (an old numpy pin uses the
 > removed `pkgutil.ImpImporter`) — `matcha` and `emojivoice` therefore pin
@@ -74,6 +75,13 @@ For each selected engine, `marmalade-tts install` runs these steps
 > explicitly stated upstream, so it is not mirrored — the manifest fetches
 > it directly from the EmojiVoice authors' Google Drive (via `gdown`, run
 > through `uv tool run` so it never has to be a marmalade-tts dependency).
+
+### api (hosted — no install)
+
+The `api` engine has no local footprint: it calls an OpenAI-compatible
+`/audio/speech` endpoint (Venice by default). Just export your key —
+`VENICE_API_KEY` unless you changed `engines.api.api_key_env` — and it
+works. `marmalade-tts install api` is a no-op that prints this reminder.
 
 ## marmalade-tts (the CLI) installation
 

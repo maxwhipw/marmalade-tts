@@ -28,6 +28,7 @@ from .engines.coqui import CoquiEngine
 from .engines.pocket import PocketEngine, VOICES as POCKET_VOICES
 from .engines.matcha import MatchaEngine
 from .engines.emojivoice import EmojiVoiceEngine, VOICES as EMOJIVOICE_VOICES
+from .engines.api import ApiEngine
 from . import effects as fx
 
 from . import cli_helpers
@@ -54,6 +55,7 @@ ENGINE_CLASSES = {
     "pocket":     PocketEngine,
     "matcha":     MatchaEngine,
     "emojivoice": EmojiVoiceEngine,
+    "api":        ApiEngine,
 }
 
 ENGINE_NAMES = list(ENGINE_CLASSES.keys())
@@ -364,6 +366,11 @@ def cmd_uninstall(args: list):
     tier = None  # "engine" | "engines" | "purge"
     engine_name = None
     if parsed.engine:
+        from .installer import NO_INSTALL_ENGINES
+        if parsed.engine in NO_INSTALL_ENGINES:
+            print(f"[uninstall] {parsed.engine}: hosted engine — nothing "
+                  f"installed locally, nothing to remove.")
+            return
         if parsed.engine not in uninstaller.INSTALL_RECIPES:
             print(f"[uninstall] unknown engine: {parsed.engine!r}\n"
                   f"  known: {', '.join(uninstaller.INSTALL_RECIPES)}",
@@ -488,7 +495,9 @@ def cmd_install(args: list):
                         help="skip the post-install synthesis self-test")
     parsed = parser.parse_args(args)
 
-    unknown = [e for e in parsed.engines if e not in installer.INSTALL_RECIPES]
+    unknown = [e for e in parsed.engines
+               if e not in installer.INSTALL_RECIPES
+               and e not in installer.NO_INSTALL_ENGINES]
     if unknown:
         print(f"[install] unknown engine(s): {', '.join(unknown)}\n"
               f"  known: {', '.join(installer.INSTALL_RECIPES)}", file=sys.stderr)

@@ -6,9 +6,10 @@ from .engines.kitten import VOICES as KITTEN_VOICES
 from .engines.kokoro import VOICE_ALIASES as _KOKORO_ALIASES
 from .engines.pocket import VOICES as POCKET_VOICES
 from .engines.emojivoice import VOICES as EMOJIVOICE_VOICES
+from .engines.api import VOICES as API_VOICES
 
 # Engine names for completion
-ENGINES = ["kitten", "kokoro", "piper", "coqui", "pocket", "matcha", "emojivoice"]
+ENGINES = ["kitten", "kokoro", "piper", "coqui", "pocket", "matcha", "emojivoice", "api"]
 # Bare names first (primary), canonical IDs after (long form, also accepted).
 KOKORO_VOICES = list(_KOKORO_ALIASES.keys()) + list(_KOKORO_ALIASES.values())
 SUBCOMMANDS = ["config", "daemon", "init", "install", "uninstall"]
@@ -33,6 +34,8 @@ CONFIG_PATHS = [
     "engines.matcha.steps", "engines.matcha.temperature",
     "engines.emojivoice.voice", "engines.emojivoice.device", "engines.emojivoice.daemon",
     "engines.emojivoice.steps", "engines.emojivoice.temperature",
+    "engines.api.base_url", "engines.api.model", "engines.api.voice",
+    "engines.api.api_key_env", "engines.api.timeout",
     "presets.fast.kitten", "presets.fast.kokoro", "presets.fast.piper",
     "presets.fast.coqui", "presets.fast.pocket", "presets.fast.matcha",
     "presets.fast.emojivoice",
@@ -42,6 +45,7 @@ CONFIG_PATHS = [
     "presets.quality.kitten", "presets.quality.kokoro", "presets.quality.piper",
     "presets.quality.coqui", "presets.quality.pocket", "presets.quality.matcha",
     "presets.quality.emojivoice",
+    "presets.fast.api", "presets.balanced.api", "presets.quality.api",
 ]
 EFFECT_NAMES = list(EFFECTS.keys()) + list(BUILTIN_PRESETS.keys())
 
@@ -64,6 +68,7 @@ def bash_completion() -> str:
     kokoro_voices = " ".join(KOKORO_VOICES)
     pocket_voices = " ".join(POCKET_VOICES)
     emojivoice_voices = " ".join(EMOJIVOICE_VOICES)
+    api_voices = " ".join(API_VOICES)
     subcommands = " ".join(SUBCOMMANDS)
     config_actions = " ".join(CONFIG_ACTIONS)
     daemon_actions = " ".join(DAEMON_ACTIONS)
@@ -86,6 +91,7 @@ _marmalade_tts() {{
     local kokoro_voices="{kokoro_voices}"
     local pocket_voices="{pocket_voices}"
     local emojivoice_voices="{emojivoice_voices}"
+    local api_voices="{api_voices}"
     local config_actions="{config_actions}"
     local daemon_actions="{daemon_actions}"
     local install_flags="{install_flags}"
@@ -169,6 +175,7 @@ _marmalade_tts() {{
             kokoro)     COMPREPLY=( $(compgen -W "$kokoro_voices" -- "$cur") ) ;;
             pocket)     COMPREPLY=( $(compgen -W "$pocket_voices" -- "$cur") ) ;;
             emojivoice) COMPREPLY=( $(compgen -W "$emojivoice_voices" -- "$cur") ) ;;
+            api)        COMPREPLY=( $(compgen -W "$api_voices" -- "$cur") ) ;;
             piper)      _filedir onnx ;;
         esac
         return
@@ -220,6 +227,7 @@ def zsh_completion() -> str:
     kokoro_voices = " ".join(KOKORO_VOICES)
     pocket_voices = " ".join(POCKET_VOICES)
     emojivoice_voices = " ".join(EMOJIVOICE_VOICES)
+    api_voices = " ".join(API_VOICES)
     effect_names = " ".join(EFFECT_NAMES)
 
     return f'''#compdef marmalade-tts
@@ -235,6 +243,7 @@ _marmalade-tts() {{
     local -a kokoro_voices=({kokoro_voices})
     local -a pocket_voices=({pocket_voices})
     local -a emojivoice_voices=({emojivoice_voices})
+    local -a api_voices=({api_voices})
     local -a effect_names=({effect_names})
 
     # Engine-aware voice completion, shared by the positional voice slot
@@ -245,6 +254,7 @@ _marmalade-tts() {{
             kokoro)     _values 'kokoro voice' $kokoro_voices ;;
             pocket)     _values 'pocket voice' $pocket_voices ;;
             emojivoice) _values 'emojivoice speaker' $emojivoice_voices ;;
+            api)        _values 'api voice' $api_voices ;;
             piper)      _files -g '*.onnx' ;;
             *) ;;  # coqui / matcha: model specs — no practical completion
         esac

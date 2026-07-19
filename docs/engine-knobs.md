@@ -204,6 +204,23 @@ synthesis; without one, the neutral style is used.
 
 ---
 
+## api
+
+Hosted OpenAI-compatible `/audio/speech` client (Venice by default —
+`marmalade-tts api --list` shows the live model + voice lineup).
+
+| Knob        | CLI         | Config key                | Default                          | Notes                                        |
+|-------------|-------------|---------------------------|----------------------------------|----------------------------------------------|
+| voice       | `--voice`   | `engines.api.voice`       | `af_heart`                       | Model-dependent (open set) — no positional voice |
+| speed       | `--speed`   | `defaults.speed`          | 1.0                              | Sent natively (`speed`, 0.25–4.0 on most providers) |
+| model       | —           | `engines.api.model`       | `tts-kokoro`                     | Provider model ID                            |
+| base_url    | —           | `engines.api.base_url`    | `https://api.venice.ai/api/v1`   | Any OpenAI-compatible host                   |
+| api_key_env | —           | `engines.api.api_key_env` | `VENICE_API_KEY`                 | Env var read for the key; `engines.api.api_key` inlines it |
+| timeout     | —           | `engines.api.timeout`     | 120                              | Seconds per request                          |
+| extra       | —           | `engines.api.extra`       | `{}`                             | Merged into the request payload verbatim (e.g. OpenAI's `instructions`) |
+
+---
+
 ## See also
 
 - [ENGINE-GUIDE.md](../ENGINE-GUIDE.md) — adding a new engine

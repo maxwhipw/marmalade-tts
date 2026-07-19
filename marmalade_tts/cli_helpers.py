@@ -82,7 +82,7 @@ def apply_preset(eng_cfg: dict, engine_name: str, preset_name: str,
         return
     if engine_name == "kitten":
         eng_cfg["model_size"] = preset_val
-    elif engine_name in ("kokoro", "pocket", "emojivoice"):
+    elif engine_name in ("kokoro", "pocket", "emojivoice", "api"):
         eng_cfg["voice"] = preset_val
     else:
         eng_cfg["model"] = preset_val

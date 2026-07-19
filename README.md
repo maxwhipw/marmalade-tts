@@ -155,6 +155,7 @@ removal, and the command exits non-zero if any path fails.
 | **pocket** | CPU-only 100M-param TTS with voice cloning | n/a (loads in ~200 ms) |
 | **matcha** | Fast flow-matching neural TTS, clear English | optional |
 | **emojivoice** | Emoji-controlled expressive TTS — 🤣😭😡 in the text set the emotion | optional |
+| **api** | Hosted OpenAI-compatible TTS (Venice by default) — needs an API key + network | n/a (nothing to keep warm) |
 
 Install the engines you want with `marmalade-tts install <engine>` (or pick
 them in `marmalade-tts init`) — marmalade-tts works with whichever are
@@ -316,6 +317,25 @@ recognized emoji is read in a neutral style.
 Built on Matcha-TTS, in its own Python 3.11 venv. `marmalade-tts install
 emojivoice` sets everything up — the venv, `espeak-ng`, and the `paige`
 speaker checkpoint.
+
+### api
+
+```sh
+export VENICE_API_KEY=...                        # or set engines.api.api_key_env
+marmalade-tts api "Hello from the cloud."
+marmalade-tts api --voice bm_george "Hello."
+marmalade-tts api --list                         # live model + voice list
+```
+
+The one engine that isn't local: an OpenAI-compatible `/audio/speech`
+client. Defaults target [Venice](https://venice.ai) (models: `tts-kokoro`,
+Qwen3-TTS, xAI, Inworld), but any provider with that endpoint shape works —
+point `engines.api.base_url` at OpenAI, Groq, DeepInfra, … and set `model`,
+`voice`, and `api_key_env` to match. Nothing to install or keep resident:
+time-to-first-audio is the network round trip plus server-side synthesis,
+which beats a cold local engine by a wide margin. Provider-specific request
+fields pass through via `engines.api.extra`. Needs network and a funded
+API key; keep a local engine configured as your offline fallback.
 
 ---
 

@@ -1,9 +1,10 @@
 # marmalade-tts
 
-> Unified local TTS CLI: a single command (`marmalade-tts`) wraps seven
-> local TTS engines (kitten, kokoro, piper, coqui, pocket, matcha,
-> emojivoice) behind one interface, one config file, one set of flags.
-> No cloud APIs. Each engine installs into its own venv.
+> Unified TTS CLI: a single command (`marmalade-tts`) wraps seven local
+> TTS engines (kitten, kokoro, piper, coqui, pocket, matcha, emojivoice)
+> plus one hosted engine (api — OpenAI-compatible providers like Venice)
+> behind one interface, one config file, one set of flags. Local engines
+> install into their own venvs; the api engine needs only a key.
 
 Repo: https://github.com/maxwhipw/marmalade-tts
 License: MIT

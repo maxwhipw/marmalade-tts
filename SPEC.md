@@ -28,6 +28,7 @@ an optional persistent daemon for instant-response engines.
         pocket.py                   ← Pocket TTS engine (subprocess into its own venv; no daemon)
         matcha.py                   ← Matcha-TTS engine (daemon client + subprocess fallback)
         emojivoice.py               ← EmojiVoice engine (daemon client + subprocess fallback)
+        api.py                      ← API engine (OpenAI-compatible /audio/speech client; no venv)
     daemon.py                       ← Daemon management (start/stop/status, config→env derivation)
     playback.py                     ← WAV playback (paplay/aplay/ffplay)
     completion.py                   ← Shell tab-completion generation
@@ -53,9 +54,11 @@ an optional persistent daemon for instant-response engines.
 ```
 
 **Engines:** `kitten`, `kokoro`, `piper`, `coqui`, `pocket`, `matcha`,
-`emojivoice` — 7 total. All except `pocket` support daemon mode (see
-`ENGINE_DAEMONS` in `daemon.py`); `pocket` loads fast enough (~200ms) from
-its own venv via subprocess that a daemon isn't worth the complexity.
+`emojivoice`, `api` — 8 total. All except `pocket` and `api` support daemon
+mode (see `ENGINE_DAEMONS` in `daemon.py`); `pocket` loads fast enough
+(~200ms) from its own venv via subprocess that a daemon isn't worth the
+complexity, and `api` is a hosted OpenAI-compatible HTTP client (Venice by
+default) with nothing to keep warm — no venv, no install step.
 
 ## CLI Interface
 
@@ -66,7 +69,7 @@ marmalade-tts [ENGINE] [VOICE] TEXT [OPTIONS]
 ```
 
 - `ENGINE` — optional, one of: `kitten`, `kokoro`, `piper`, `coqui`, `pocket`,
-  `matcha`, `emojivoice` (or a configured alias — see README "Voice
+  `matcha`, `emojivoice`, `api` (or a configured alias — see README "Voice
   aliases / personas")
   - If omitted, uses `defaults.engine` from config
 - `VOICE` — optional positional override for voice/model, for engines whose
@@ -78,6 +81,7 @@ marmalade-tts [ENGINE] [VOICE] TEXT [OPTIONS]
   - Piper: path to .onnx model file (via `--voice`)
   - Coqui: model name (tts_models/en/...) (via `--voice`)
   - Pocket: built-in voice name, or a `.wav`/`.safetensors` path for cloning
+  - API: provider voice IDs are model-dependent (open set) — use `--voice`
   - Matcha: model name (matcha_ljspeech, matcha_vctk) or a `.ckpt` path
   - EmojiVoice: speaker checkpoint name (paige)
 - `TEXT` — literal string, `@filename` (read from file), or `-` (stdin)
@@ -230,6 +234,14 @@ engines:
     voice: paige             # EmojiVoice speaker checkpoint
     daemon: false            # true keeps the model in RAM
     # steps / temperature — same knobs as matcha (runs on Matcha-TTS)
+
+  api:
+    base_url: https://api.venice.ai/api/v1   # any OpenAI-compatible /audio/speech host
+    model: tts-kokoro
+    voice: af_heart
+    api_key_env: VENICE_API_KEY   # env var holding the key (or inline api_key)
+    # timeout: 120
+    # extra: {}               # provider-specific payload passthrough
 
 # Named bundles of engine + voice + speed + effects, invoked positionally
 # like an engine name (see README "Voice aliases / personas").

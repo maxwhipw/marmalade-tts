@@ -18,6 +18,7 @@ presets:
     pocket: alba      # fast: default voice
     matcha: matcha_ljspeech
     emojivoice: paige
+    api: af_heart
   balanced:
     kitten: micro
     kokoro: af_heart
@@ -26,6 +27,7 @@ presets:
     pocket: fantine   # balanced: alternate voice
     matcha: matcha_ljspeech
     emojivoice: paige
+    api: af_heart
   quality:
     kitten: mini
     kokoro: af_heart
@@ -34,6 +36,7 @@ presets:
     pocket: cosette   # quality: another voice (pocket has no model-size variants)
     matcha: matcha_ljspeech   # matcha has no model-size variants
     emojivoice: paige
+    api: af_heart
 
 engines:
   kitten:
@@ -101,6 +104,18 @@ engines:
     # Same quality knobs as matcha:
     # steps: 50
     # temperature: 0.667
+
+  api:
+    # Hosted OpenAI-compatible TTS. Defaults target Venice; any provider
+    # with a /audio/speech endpoint works (OpenAI, Groq, DeepInfra, ...).
+    base_url: https://api.venice.ai/api/v1
+    model: tts-kokoro        # marmalade-tts api --list shows the live lineup
+    voice: af_heart
+    api_key_env: VENICE_API_KEY  # env var the key is read from
+    # api_key: sk-...        # inline key (env var preferred)
+    # timeout: 120           # seconds per request
+    # extra:                 # provider-specific payload passthrough, e.g.
+    #   instructions: "Speak warmly"   # (OpenAI gpt-4o-mini-tts)
 
 # Audio effects — requires sox (apt install sox)
 # Custom presets combine built-in effects. Use --list-effects to see all options.
